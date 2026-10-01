@@ -1,0 +1,2 @@
+# 统一 LF（CI 在 ubuntu 跑，Windows 开发防 CRLF 混入）
+* text=auto eol=lf
