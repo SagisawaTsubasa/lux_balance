@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timedelta
 
+from homeassistant import config_entries
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_BRIGHTNESS_PCT
 from homeassistant.const import (
     STATE_OFF,
@@ -26,7 +27,6 @@ from homeassistant.const import (
 )
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant import config_entries
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
