@@ -1,0 +1,87 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "添加恒照度区域",
+        "description": "选择一盏可调光灯和观测它的照度传感器。每个区域一条配置，干区、湿区分别添加。",
+        "data": {
+          "zone_name": "区域名称",
+          "light_entity": "灯",
+          "lux_entity": "照度传感器"
+        },
+        "data_description": {
+          "zone_name": "显示为设备名称，例如：干区。",
+          "light_entity": "要驱动的真实可调光灯。",
+          "lux_entity": "测量该灯照度的传感器（优先选照度类）。"
+        }
+      }
+    },
+    "error": {
+      "entity_missing": "在 Home Assistant 中找不到该实体。",
+      "light_no_brightness": "这盏灯不支持亮度调节。",
+      "light_is_virtual": "这盏灯是 Lux Balance 自己生成的虚拟灯，请改选真实的灯。"
+    },
+    "abort": {
+      "already_configured": "该区域（灯 + 传感器组合）已配置过。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "恒照度照明选项",
+        "data": {
+          "target_lux": "目标照度",
+          "scan_interval_s": "调节周期",
+          "deadband_pct": "死区",
+          "min_brightness_pct": "最小亮度",
+          "calibrate_step_pct": "校准步长",
+          "auto_turn_off": "环境光达标自动关灯",
+          "manual_slope": "手动曲线（每 1% 亮度的 lux 增量）"
+        },
+        "data_description": {
+          "target_lux": "传感器处的期望照度（lux）。仅当在此显式设置时作为初始值（重载后优先生效）；否则恢复目标照度数字实体的上次值。",
+          "scan_interval_s": "开灯期间的闭环重估周期。",
+          "deadband_pct": "亮度变化小于该百分比时不动，避免闪烁。",
+          "min_brightness_pct": "计算亮度的下限，规避 LED 低亮不稳定区。",
+          "calibrate_step_pct": "校准扫描步长（5 精细、10 粗扫；连续超时会自动升级为 10）。",
+          "auto_turn_off": "连续两个周期环境光不低于目标时自动关灯。",
+          "manual_slope": "未校准时的兜底线性曲线（每 1% 亮度贡献的 lux），0 表示不启用。"
+        }
+      }
+    }
+  },
+  "services": {
+    "calibrate": {
+      "name": "开始校准",
+      "description": "启动恒照度曲线自动校准扫描（约 15~25 分钟，期间请勿在室内活动）。"
+    }
+  },
+  "entity": {
+    "light": {
+      "adaptive_light": {
+        "name": "恒照度灯"
+      }
+    },
+    "number": {
+      "target_illuminance": {
+        "name": "目标照度"
+      }
+    },
+    "button": {
+      "calibrate": {
+        "name": "开始校准"
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "运行状态",
+        "state": {
+          "idle": "空闲",
+          "active": "恒照度中",
+          "calibrating": "校准中",
+          "passthrough": "手动直通"
+        }
+      }
+    }
+  }
+}
