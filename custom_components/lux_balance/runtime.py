@@ -120,6 +120,7 @@ class ZoneRuntime:
         self._eval_pending = False
         self._cal_was_on = False
         self._cal_pending_off = False
+        self._suspended: list[ZoneRuntime] = []
         self._stopped = False
 
     # ---------------------------------------------------------------- lifecycle
@@ -168,11 +169,11 @@ class ZoneRuntime:
             self.mode = MODE_ACTIVE
 
     async def async_stop(self) -> None:
-        """Detach listeners and let in-flight tasks unwind fully.
+        """Detach listeners and cancel/await in-flight tasks.
 
-        Awaiting the cancelled tasks guarantees the light-restore inside the
-        calibration ``finally`` completes before unload/reload returns, so a
-        fresh runtime never races a stale restore write.
+        Best-effort: the calibration's restore inside its ``finally`` usually
+        completes because we await the cancelled task, but a cancellation
+        landing exactly on the restore's own await can abandon it.
         """
         self._stopped = True
         for unsub in self._unsubs:
@@ -214,9 +215,12 @@ class ZoneRuntime:
             new_state.state == STATE_ON
             and self.mode == MODE_IDLE
             and self.curve is not None
+            and not self._any_zone_calibrating()
         ):
             # External switch-on: take over compensation instead of staying a
-            # passive mirror (mirrors the start() restart self-heal).
+            # passive mirror (mirrors the start() restart self-heal). Gated
+            # while any zone calibrates — a revived loop would pollute the
+            # running sweep's samples.
             _LOGGER.info("%s: 真灯被外部打开，闭环接管", self.zone_name)
             self.mode = MODE_ACTIVE
             self._off_streak = 0
@@ -244,6 +248,14 @@ class ZoneRuntime:
             self._eval_pending = True
         else:
             self._eval_task = self.hass.async_create_task(self.async_evaluate(trigger))
+
+    def _any_zone_calibrating(self) -> bool:
+        """True while any *other* zone runs a calibration sweep."""
+        return any(
+            other.mode == MODE_CALIBRATING
+            for other in self.hass.data.get(DOMAIN, {}).values()
+            if other is not self
+        )
 
     # ------------------------------------------------------------- closed loop
 
@@ -539,6 +551,7 @@ class ZoneRuntime:
                     other.zone_name,
                 )
                 other.mode = MODE_IDLE
+                self._suspended.append(other)
                 other.notify()
         # Set synchronously so an evaluate already past its mode check gets
         # dropped by the in-lock recheck instead of polluting the baseline.
@@ -555,6 +568,16 @@ class ZoneRuntime:
         orig_pct: float | None = None
         captured = False
         try:
+            # Let an in-flight evaluate finish (its write lands) before the
+            # baseline window opens; cancellation must still propagate.
+            eval_task = self._eval_task
+            if eval_task is not None and not eval_task.done():
+                try:
+                    await eval_task
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    pass
             async with self._apply_lock:
                 # Let any in-flight light write land before we capture state.
                 light_state = self.hass.states.get(self.light_entity)
@@ -605,8 +628,11 @@ class ZoneRuntime:
             _LOGGER.exception("%s: 校准异常中止", self.zone_name)
         finally:
             # Sync first (cannot be interrupted), then best-effort restore.
+            # A pending turn-off skips the restore: no point flashing the
+            # original level just to switch it off again.
             self._finish_calibration()
-            if captured:
+            if captured and not self._cal_pending_off:
+                # Best-effort: cancellation landing on this await abandons it.
                 with contextlib.suppress(Exception):
                     await self._async_restore_light(was_on, orig_pct)
             if self._cal_pending_off:
@@ -617,6 +643,21 @@ class ZoneRuntime:
                 with contextlib.suppress(Exception):
                     await self._async_call_light("turn_off", {})
                 self.notify()
+            # Wake up the zones whose loops were suspended for the sweep:
+            # only those whose light is actually on have something to do.
+            for other in self._suspended:
+                light = self.hass.states.get(other.light_entity)
+                if (
+                    other.mode == MODE_IDLE
+                    and other.curve is not None
+                    and light is not None
+                    and light.state == STATE_ON
+                ):
+                    _LOGGER.info("%s: 恢复 %s 的闭环", self.zone_name, other.zone_name)
+                    other.mode = MODE_ACTIVE
+                    other.notify()
+                    other._schedule_evaluate("resume")
+            self._suspended.clear()
 
     def _finish_calibration(self) -> None:
         self.mode = (
@@ -631,14 +672,22 @@ class ZoneRuntime:
         self.cal_progress = "基线（灯全灭）"
         self.notify()
         light_state = self.hass.states.get(self.light_entity)
-        already_off = light_state is None or light_state.state != STATE_ON
+        # "Already off" must be *certain*: an unavailable light may actually be
+        # lit (BLE dropout), and treating its reading as a dark baseline would
+        # silently skew the whole curve.
+        already_off = (
+            light_state is not None
+            and light_state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+            and light_state.state != STATE_ON
+        )
         baseline_samples = await self._async_cal_step(None)
         if not baseline_samples and already_off:
             # Change-driven sensor: a redundant turn-off produces no report.
             # The light was already off, so the current reading IS the baseline.
             cur = self.hass.states.get(self.lux_entity)
-            with contextlib.suppress(TypeError, ValueError):
-                baseline_samples = [float(cur.state)]
+            if cur is not None and cur.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                with contextlib.suppress(TypeError, ValueError):
+                    baseline_samples = [float(cur.state)]
         if not baseline_samples:
             raise CalibrationError("基线阶段未收到照度数据（传感器无读数）")
         baseline = statistics.median(baseline_samples)
@@ -646,36 +695,44 @@ class ZoneRuntime:
         down: dict[float, float] = {}
         missed_streak = 0
         max_missed_streak = 0
+
+        def note_miss(pct: float, gap: float, direction: str) -> None:
+            nonlocal missed_streak, max_missed_streak
+            # Tiny gaps come from the appended 100% point; a 1-2% delta is
+            # near-certain to be sub-threshold and must not trigger a re-sweep.
+            if pct >= _CAL_MISSED_COUNT_MIN_PCT and gap >= step:
+                missed_streak += 1
+                max_missed_streak = max(max_missed_streak, missed_streak)
+            _LOGGER.warning(
+                "%s: %s %d%% 档未收到上报，跳过该点", self.zone_name, direction, pct
+            )
+
+        prev_pct = steps[0]
         for pct in steps[1:]:
             self.cal_progress = f"上行 {pct}%"
             self.notify()
             samples = await self._async_cal_step(float(pct))
+            gap = pct - prev_pct
+            prev_pct = pct
             if samples:
                 up[float(pct)] = statistics.median(samples)
                 missed_streak = 0
             else:
-                if pct >= _CAL_MISSED_COUNT_MIN_PCT:
-                    missed_streak += 1
-                    max_missed_streak = max(max_missed_streak, missed_streak)
-                _LOGGER.warning(
-                    "%s: 上行 %d%% 档未收到上报，跳过该点", self.zone_name, pct
-                )
+                note_miss(pct, gap, "上行")
         missed_streak = 0  # streaks must not chain across passes
+        prev_pct = steps[-1]
         for pct in reversed(steps[1:-1]):
             # Down pass starts below 100%: that level was just measured going up.
             self.cal_progress = f"下行 {pct}%"
             self.notify()
             samples = await self._async_cal_step(float(pct))
+            gap = prev_pct - pct
+            prev_pct = pct
             if samples:
                 down[float(pct)] = statistics.median(samples)
                 missed_streak = 0
             else:
-                if pct >= _CAL_MISSED_COUNT_MIN_PCT:
-                    missed_streak += 1
-                    max_missed_streak = max(max_missed_streak, missed_streak)
-                _LOGGER.warning(
-                    "%s: 下行 %d%% 档未收到上报，跳过该点", self.zone_name, pct
-                )
+                note_miss(pct, gap, "下行")
         return {
             "up": up,
             "down": down,
