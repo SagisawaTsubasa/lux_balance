@@ -91,12 +91,18 @@ def _register_services(hass: HomeAssistant) -> None:
             return
         entity_ids: set[str] = set()
         if has_target:
-            # HA ≥2025.12 dropped the leading hass parameter (deprecated shim
-            # since then); probe the signature to support both generations.
+            # HA 2025.10 changed the signature (leading hass deprecated since
+            # then, shim removed in 2026.10); probe it to support both.
             if "hass" in inspect.signature(async_extract_entity_ids).parameters:
                 entity_ids = set(await async_extract_entity_ids(hass, call))
             else:
                 entity_ids = set(await async_extract_entity_ids(call))
+            if not entity_ids:
+                # A target that resolves to nothing must NOT fall through to
+                # "calibrate everything" — that would sweep the whole bathroom
+                # for 15~25 minutes unrequested.
+                _LOGGER.warning("lux_balance.calibrate: 目标未解析出任何实体，放弃执行")
+                return
         addressed = 0
         for runtime in list((hass.data.get(DOMAIN) or {}).values()):
             if entity_ids and not entity_ids & _zone_entities(hass, runtime):
