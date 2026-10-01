@@ -120,7 +120,6 @@ class ZoneRuntime:
         self._eval_pending = False
         self._cal_was_on = False
         self._cal_pending_off = False
-        self._suspended: list[ZoneRuntime] = []
         self._stopped = False
 
     # ---------------------------------------------------------------- lifecycle
@@ -380,7 +379,9 @@ class ZoneRuntime:
                     _LOGGER.info("%s: 环境光已达目标，自动关灯", self.zone_name)
                 else:
                     # Roll back so the loop keeps running; the light stayed on.
-                    self.mode = MODE_ACTIVE
+                    # Re-check: a calibration may have started during the await.
+                    if self.mode == MODE_IDLE:
+                        self.mode = MODE_ACTIVE
                     decision = replace(
                         decision, reason=f"{decision.reason} (service failed)"
                     )
@@ -551,7 +552,6 @@ class ZoneRuntime:
                     other.zone_name,
                 )
                 other.mode = MODE_IDLE
-                self._suspended.append(other)
                 other.notify()
         # Set synchronously so an evaluate already past its mode check gets
         # dropped by the in-lock recheck instead of polluting the baseline.
@@ -643,9 +643,12 @@ class ZoneRuntime:
                 with contextlib.suppress(Exception):
                     await self._async_call_light("turn_off", {})
                 self.notify()
-            # Wake up the zones whose loops were suspended for the sweep:
-            # only those whose light is actually on have something to do.
-            for other in self._suspended:
+            # Wake up any zone that can compensate: IDLE + curve + light on.
+            # Covers zones suspended for the sweep as well as ones switched on
+            # (by hand or automation) while it ran.
+            for other in self.hass.data.get(DOMAIN, {}).values():
+                if other is self:
+                    continue
                 light = self.hass.states.get(other.light_entity)
                 if (
                     other.mode == MODE_IDLE
@@ -657,7 +660,6 @@ class ZoneRuntime:
                     other.mode = MODE_ACTIVE
                     other.notify()
                     other._schedule_evaluate("resume")
-            self._suspended.clear()
 
     def _finish_calibration(self) -> None:
         self.mode = (
