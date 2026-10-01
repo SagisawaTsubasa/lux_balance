@@ -112,12 +112,15 @@ class ZoneRuntime:
         self.storage = ZoneStorage(hass, entry.entry_id)
         self._unsubs: list[Callable[[], None]] = []
         self._cal_task: asyncio.Task | None = None
+        self._eval_task: asyncio.Task | None = None
         self._apply_lock = asyncio.Lock()
         self._off_streak = 0
         self._stale_warned = False
         self._eval_busy = False
         self._eval_pending = False
         self._cal_was_on = False
+        self._cal_pending_off = False
+        self._stopped = False
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -165,19 +168,24 @@ class ZoneRuntime:
             self.mode = MODE_ACTIVE
 
     async def async_stop(self) -> None:
-        """Detach listeners and let the calibration task unwind fully.
+        """Detach listeners and let in-flight tasks unwind fully.
 
-        Awaiting the cancelled task guarantees the light-restore inside its
-        ``finally`` completes before unload/reload returns, so a fresh runtime
-        never races a stale restore write.
+        Awaiting the cancelled tasks guarantees the light-restore inside the
+        calibration ``finally`` completes before unload/reload returns, so a
+        fresh runtime never races a stale restore write.
         """
+        self._stopped = True
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
-        task = self._cal_task
-        self._cal_task = None
-        if task is not None:
-            task.cancel()
+        tasks: list[asyncio.Task] = []
+        for attr in ("_cal_task", "_eval_task"):
+            task = getattr(self, attr)
+            setattr(self, attr, None)
+            if task is not None and not task.done():
+                task.cancel()
+                tasks.append(task)
+        for task in tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
@@ -202,6 +210,17 @@ class ZoneRuntime:
             _LOGGER.info("%s: 真灯被外部关闭，停止调节", self.zone_name)
             self.mode = MODE_IDLE
             self.commanded_pct = None
+        elif (
+            new_state.state == STATE_ON
+            and self.mode == MODE_IDLE
+            and self.curve is not None
+        ):
+            # External switch-on: take over compensation instead of staying a
+            # passive mirror (mirrors the start() restart self-heal).
+            _LOGGER.info("%s: 真灯被外部打开，闭环接管", self.zone_name)
+            self.mode = MODE_ACTIVE
+            self._off_streak = 0
+            self._schedule_evaluate("external-on")
         self.notify()
 
     @callback
@@ -219,12 +238,12 @@ class ZoneRuntime:
 
     @callback
     def _schedule_evaluate(self, trigger: str) -> None:
-        if self.mode != MODE_ACTIVE:
+        if self.mode != MODE_ACTIVE or self._stopped:
             return
         if self._eval_busy:
             self._eval_pending = True
         else:
-            self.hass.async_create_task(self.async_evaluate(trigger))
+            self._eval_task = self.hass.async_create_task(self.async_evaluate(trigger))
 
     # ------------------------------------------------------------- closed loop
 
@@ -252,8 +271,10 @@ class ZoneRuntime:
             self._eval_busy = False
             if self._eval_pending:
                 self._eval_pending = False
-                if self.mode == MODE_ACTIVE:
-                    self.hass.async_create_task(self.async_evaluate("lux"))
+                if self.mode == MODE_ACTIVE and not self._stopped:
+                    self._eval_task = self.hass.async_create_task(
+                        self.async_evaluate("lux")
+                    )
 
     async def _async_compute_decision(
         self,
@@ -324,8 +345,8 @@ class ZoneRuntime:
 
     async def _apply(self, trigger: str, lux_now: float, decision: Decision) -> None:
         async with self._apply_lock:
-            if self.mode != MODE_ACTIVE:
-                return  # state moved on while this decision was in flight
+            if self.mode != MODE_ACTIVE or self._stopped:
+                return  # state moved on / runtime stopping while in flight
             if decision.action == "set":
                 ok = await self._async_call_light(
                     "turn_on", {ATTR_BRIGHTNESS_PCT: round(decision.pct)}
@@ -478,7 +499,11 @@ class ZoneRuntime:
         """Virtual light turned off."""
         async with self._apply_lock:
             if self.mode == MODE_CALIBRATING:
-                _LOGGER.info("%s: 校准进行中，忽略关灯命令", self.zone_name)
+                # Remember the intent; honoured after the sweep unwinds.
+                self._cal_pending_off = True
+                _LOGGER.info(
+                    "%s: 校准进行中，关灯请求将在校准结束后执行", self.zone_name
+                )
                 return
             self.mode = MODE_IDLE
             self.commanded_pct = None
@@ -488,13 +513,38 @@ class ZoneRuntime:
     # --------------------------------------------------------------- calibration
 
     def start_calibration(self) -> bool:
-        """Kick off a sweep; False when one is already running."""
+        """Kick off a sweep; False when one is already running anywhere.
+
+        Two zones share one bathroom and both presence sensors see both
+        lights (DESIGN §2), so concurrent or overlapping sweeps would pollute
+        each other's samples — calibration is strictly one-zone-at-a-time,
+        and other zones' closed loops are suspended while it runs.
+        """
         if self.mode == MODE_CALIBRATING:
             return False
+        for other in self.hass.data.get(DOMAIN, {}).values():
+            if other is self:
+                continue
+            if other.mode == MODE_CALIBRATING:
+                _LOGGER.warning(
+                    "%s: 另一区域（%s）校准进行中，同一卫生间一次只能校准一个区",
+                    self.zone_name,
+                    other.zone_name,
+                )
+                return False
+            if other.mode == MODE_ACTIVE:
+                _LOGGER.info(
+                    "%s: 暂停 %s 的闭环，避免其调光污染校准采样",
+                    self.zone_name,
+                    other.zone_name,
+                )
+                other.mode = MODE_IDLE
+                other.notify()
         # Set synchronously so an evaluate already past its mode check gets
         # dropped by the in-lock recheck instead of polluting the baseline.
         self.mode = MODE_CALIBRATING
         self._cal_was_on = False
+        self._cal_pending_off = False
         self.cal_progress = "准备中"
         self.notify()
         self._cal_task = self.hass.async_create_task(self._async_run_calibration())
@@ -502,14 +552,14 @@ class ZoneRuntime:
 
     async def _async_run_calibration(self) -> None:
         was_on = False
-        orig_pct = 100.0
+        orig_pct: float | None = None
         captured = False
         try:
             async with self._apply_lock:
                 # Let any in-flight light write land before we capture state.
                 light_state = self.hass.states.get(self.light_entity)
                 was_on = light_state is not None and light_state.state == STATE_ON
-                orig_pct = self._attr_pct(light_state) if was_on else 100.0
+                orig_pct = self._attr_pct(light_state) if was_on else None
                 self._cal_was_on = was_on
                 captured = True
             step = int(self.opts[CONF_CAL_STEP_PCT])
@@ -559,6 +609,14 @@ class ZoneRuntime:
             if captured:
                 with contextlib.suppress(Exception):
                     await self._async_restore_light(was_on, orig_pct)
+            if self._cal_pending_off:
+                # The user asked to turn the light off during the sweep.
+                self._cal_pending_off = False
+                self.mode = MODE_IDLE
+                self.commanded_pct = None
+                with contextlib.suppress(Exception):
+                    await self._async_call_light("turn_off", {})
+                self.notify()
 
     def _finish_calibration(self) -> None:
         self.mode = (
@@ -572,9 +630,17 @@ class ZoneRuntime:
         steps = calibration_steps(step)
         self.cal_progress = "基线（灯全灭）"
         self.notify()
+        light_state = self.hass.states.get(self.light_entity)
+        already_off = light_state is None or light_state.state != STATE_ON
         baseline_samples = await self._async_cal_step(None)
+        if not baseline_samples and already_off:
+            # Change-driven sensor: a redundant turn-off produces no report.
+            # The light was already off, so the current reading IS the baseline.
+            cur = self.hass.states.get(self.lux_entity)
+            with contextlib.suppress(TypeError, ValueError):
+                baseline_samples = [float(cur.state)]
         if not baseline_samples:
-            raise CalibrationError("基线阶段（灯全灭）未收到任何照度上报")
+            raise CalibrationError("基线阶段未收到照度数据（传感器无读数）")
         baseline = statistics.median(baseline_samples)
         up: dict[float, float] = {}
         down: dict[float, float] = {}
@@ -594,7 +660,9 @@ class ZoneRuntime:
                 _LOGGER.warning(
                     "%s: 上行 %d%% 档未收到上报，跳过该点", self.zone_name, pct
                 )
-        for pct in reversed(steps[1:]):
+        missed_streak = 0  # streaks must not chain across passes
+        for pct in reversed(steps[1:-1]):
+            # Down pass starts below 100%: that level was just measured going up.
             self.cal_progress = f"下行 {pct}%"
             self.notify()
             samples = await self._async_cal_step(float(pct))
@@ -624,8 +692,14 @@ class ZoneRuntime:
                 self.commanded_pct = None
             else:
                 ok = await self._async_call_light("turn_on", {ATTR_BRIGHTNESS_PCT: pct})
-                if ok:
-                    self.commanded_pct = pct
+                if not ok:
+                    # Light stayed at the previous level: sampling now would
+                    # record the wrong level as this step's data.
+                    _LOGGER.warning(
+                        "%s: 校准 %s%% 档调光失败，本档作弃点", self.zone_name, pct
+                    )
+                    return []
+                self.commanded_pct = pct
         await asyncio.sleep(CAL_CMD_SETTLE_S)
         samples: list[float] = []
         last_lc = None
@@ -652,23 +726,26 @@ class ZoneRuntime:
             await asyncio.sleep(CAL_POLL_INTERVAL_S)
         return samples
 
-    async def _async_restore_light(self, was_on: bool, orig_pct: float) -> None:
+    async def _async_restore_light(self, was_on: bool, orig_pct: float | None) -> None:
         async with self._apply_lock:
             if was_on:
-                ok = await self._async_call_light(
-                    "turn_on", {ATTR_BRIGHTNESS_PCT: round(orig_pct)}
+                # Unknown original level (BLE often hides brightness): turn on
+                # without a level so the fixture keeps its own default.
+                data = (
+                    {} if orig_pct is None else {ATTR_BRIGHTNESS_PCT: round(orig_pct)}
                 )
+                ok = await self._async_call_light("turn_on", data)
                 if ok:
                     self.commanded_pct = orig_pct
             else:
                 await self._async_call_light("turn_off", {})
                 self.commanded_pct = None
 
-    def _attr_pct(self, state) -> float:
+    def _attr_pct(self, state) -> float | None:
         brightness = state.attributes.get(ATTR_BRIGHTNESS) if state else None
         if isinstance(brightness, (int, float)) and brightness > 0:
             return min(100.0, brightness / 255.0 * 100)
-        return 100.0
+        return self.commanded_pct
 
     # -------------------------------------------------------------- diagnostics
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 
 import voluptuous as vol
@@ -21,7 +22,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _LOGGER = logging.getLogger(__name__)
 
-_TARGET_KEYS = {"entity_id", "device_id", "area_id"}
+_TARGET_KEYS = {"entity_id", "device_id", "area_id", "floor_id", "label_id"}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -90,7 +91,12 @@ def _register_services(hass: HomeAssistant) -> None:
             return
         entity_ids: set[str] = set()
         if has_target:
-            entity_ids = set(await async_extract_entity_ids(hass, call))
+            # HA ≥2025.12 dropped the leading hass parameter (deprecated shim
+            # since then); probe the signature to support both generations.
+            if "hass" in inspect.signature(async_extract_entity_ids).parameters:
+                entity_ids = set(await async_extract_entity_ids(hass, call))
+            else:
+                entity_ids = set(await async_extract_entity_ids(call))
         addressed = 0
         for runtime in list((hass.data.get(DOMAIN) or {}).values()):
             if entity_ids and not entity_ids & _zone_entities(hass, runtime):

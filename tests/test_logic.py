@@ -111,6 +111,13 @@ class TestCalibrationSynthesis:
         assert calibration_steps(0) == calibration_steps(2)
         assert calibration_steps(99) == calibration_steps(20)
 
+    def test_calibration_steps_appends_100(self):
+        # Steps that do not divide 100 must still reach the 100% point.
+        for step in (3, 6, 7, 9, 13, 17, 19):
+            steps = calibration_steps(step)
+            assert steps[-1] == 100
+            assert steps[-2] < 100
+
     def test_combine_passes_averages_and_keeps_singles(self):
         result = dict(combine_passes({20: 120.0, 40: 220.0}, {20: 110.0}))
         assert result[20] == pytest.approx(115)

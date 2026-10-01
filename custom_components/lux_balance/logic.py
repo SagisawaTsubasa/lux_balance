@@ -110,9 +110,16 @@ def decide(
 
 
 def calibration_steps(step_pct: int) -> list[int]:
-    """Sweep percentages for a given step size, always starting at 0."""
+    """Sweep percentages for a given step size, always 0→…→100.
+
+    Steps that do not divide 100 evenly would otherwise never reach the
+    100% point, leaving the top of the curve to extrapolation.
+    """
     step = max(2, min(20, int(step_pct)))
-    return list(range(0, 101, step))
+    steps = list(range(0, 101, step))
+    if steps[-1] != 100:
+        steps.append(100)
+    return steps
 
 
 def combine_passes(
