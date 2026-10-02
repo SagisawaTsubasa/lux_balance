@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "添加恒照度区域",
-        "description": "选择一盏可调光灯和观测它的照度传感器。每个区域一条配置，干区、湿区分别添加。",
+        "description": "每个区域一条配置。之后在自动化里控制它生成的虚拟灯：开＝闭环恒照度，设亮度＝手动直通；真实灯由集成自动驱动。",
         "data": {
           "zone_name": "区域名称",
           "light_entity": "灯",
           "lux_entity": "照度传感器"
         },
         "data_description": {
-          "zone_name": "显示为设备名称，例如：干区。",
+          "zone_name": "只填区域名（如：卫生间），它将作为设备名。",
           "light_entity": "要驱动的真实可调光灯。",
           "lux_entity": "测量该灯照度的传感器（优先选照度类）。"
         }
@@ -45,24 +45,31 @@
   "options": {
     "step": {
       "init": {
-        "title": "恒照度照明选项",
+        "title": "闭环调节",
+        "description": "灯亮时的闭环行为。目标照度请在「目标照度」数字实体上调整。",
         "data": {
-          "target_lux": "目标照度",
-          "scan_interval_s": "调节周期",
-          "deadband_pct": "死区",
-          "min_brightness_pct": "最小亮度",
-          "calibrate_step_pct": "校准步长",
-          "auto_turn_off": "环境光达标自动关灯",
-          "manual_slope": "手动曲线（每 1% 亮度的 lux 增量）"
+          "scan_interval_s": "调节间隔（秒）",
+          "deadband_pct": "死区（%）",
+          "min_brightness_pct": "最小亮度（%）",
+          "auto_turn_off": "环境达标自动关灯"
         },
         "data_description": {
-          "target_lux": "传感器处的期望照度（lux）。仅当在此显式设置时作为初始值（重载后优先生效）；否则恢复目标照度数字实体的上次值。",
-          "scan_interval_s": "开灯期间的闭环重估周期。",
-          "deadband_pct": "亮度变化小于该百分比时不动，避免闪烁。",
+          "scan_interval_s": "灯亮时的闭环重估周期。",
+          "deadband_pct": "小于该比例的调整会被跳过，避免频闪。",
           "min_brightness_pct": "计算亮度的下限，规避 LED 低亮不稳定区。",
-          "calibrate_step_pct": "校准扫描步长（5 精细、10 粗扫；连续超时会自动升级为 10）。",
-          "auto_turn_off": "连续两个周期环境光不低于目标时自动关灯。",
-          "manual_slope": "未校准时的兜底线性曲线（每 1% 亮度贡献的 lux），0 表示不启用。"
+          "auto_turn_off": "环境光连续 2 周期达到目标后自动关灯。"
+        }
+      },
+      "advanced": {
+        "title": "校准与降级",
+        "description": "校准与回退参数。",
+        "data": {
+          "calibrate_step_pct": "校准步长（%）",
+          "manual_slope": "手动曲线（lux / 1%）"
+        },
+        "data_description": {
+          "calibrate_step_pct": "校准扫描步长（5=细扫，10=粗扫；连续超时自动升为 10）。",
+          "manual_slope": "未校准时的回退线性曲线（每 1% 亮度增加的 lux）；0 为禁用。"
         }
       }
     }

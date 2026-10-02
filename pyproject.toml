@@ -11,3 +11,4 @@ known-first-party = ["homeassistant"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # 让 CI 的 pytest 控制台脚本能导入 custom_components 包

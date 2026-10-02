@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import logging
-
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .runtime import ZoneRuntime
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -42,7 +39,10 @@ class CalibrateButton(ButtonEntity):
 
     async def async_press(self) -> None:
         if not self._runtime.start_calibration():
-            _LOGGER.info("%s: 校准已在进行中", self._runtime.zone_name)
+            # 抛错让 UI 弹 toast，而不是静默写日志
+            raise HomeAssistantError(
+                f"{self._runtime.zone_name}: 校准已在进行中，等当前校准完成后再试"
+            )
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(

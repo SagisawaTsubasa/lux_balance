@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
@@ -23,14 +23,8 @@ from .const import (
     CONF_SCAN_INTERVAL_S,
     CONF_TARGET_LUX,
     CONF_ZONE_NAME,
-    DEFAULT_AUTO_TURN_OFF,
-    DEFAULT_CAL_STEP_PCT,
-    DEFAULT_DEADBAND_PCT,
-    DEFAULT_MANUAL_SLOPE,
-    DEFAULT_MIN_BRIGHTNESS_PCT,
-    DEFAULT_SCAN_INTERVAL_S,
-    DEFAULT_TARGET_LUX,
     DOMAIN,
+    merged_options,
 )
 from .store import ZoneStorage
 
@@ -47,23 +41,6 @@ _BRIGHTNESS_MODES = {
 }
 
 
-def merged_options(options: Mapping[str, Any]) -> dict[str, Any]:
-    """Options merged over defaults; single source of truth for runtime too."""
-    return {
-        CONF_TARGET_LUX: options.get(CONF_TARGET_LUX, DEFAULT_TARGET_LUX),
-        CONF_SCAN_INTERVAL_S: options.get(
-            CONF_SCAN_INTERVAL_S, DEFAULT_SCAN_INTERVAL_S
-        ),
-        CONF_DEADBAND_PCT: options.get(CONF_DEADBAND_PCT, DEFAULT_DEADBAND_PCT),
-        CONF_MIN_BRIGHTNESS_PCT: options.get(
-            CONF_MIN_BRIGHTNESS_PCT, DEFAULT_MIN_BRIGHTNESS_PCT
-        ),
-        CONF_CAL_STEP_PCT: options.get(CONF_CAL_STEP_PCT, DEFAULT_CAL_STEP_PCT),
-        CONF_AUTO_TURN_OFF: options.get(CONF_AUTO_TURN_OFF, DEFAULT_AUTO_TURN_OFF),
-        CONF_MANUAL_SLOPE: options.get(CONF_MANUAL_SLOPE, DEFAULT_MANUAL_SLOPE),
-    }
-
-
 def _user_schema() -> vol.Schema:
     return vol.Schema(
         {
@@ -74,7 +51,9 @@ def _user_schema() -> vol.Schema:
                 selector.EntitySelectorConfig(domain="light")
             ),
             vol.Required(CONF_LUX_ENTITY): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor")
+                selector.EntitySelectorConfig(
+                    domain="sensor", device_class="illuminance"
+                )
             ),
         }
     )
@@ -87,13 +66,15 @@ def _validate_binding(
     if user_input is None:
         return {}
     light_entity: str = user_input[CONF_LIGHT_ENTITY]
-    state = hass.states.get(light_entity)
     registry_entry = er.async_get(hass).async_get(light_entity)
-    if state is None:
+    state = hass.states.get(light_entity)
+    if registry_entry is None and state is None:
         return {"base": "entity_missing"}
     if registry_entry is not None and registry_entry.platform == DOMAIN:
         return {"base": "light_is_virtual"}
-    if not _BRIGHTNESS_MODES & set(
+    # BLE 灯经常离线：只有在线时才做亮度能力校验，离线不拦配置
+    online = state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+    if online and not _BRIGHTNESS_MODES & set(
         state.attributes.get("supported_color_modes") or []
     ):
         return {"base": "light_no_brightness"}
@@ -144,9 +125,7 @@ class LuxBalanceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(new_unique_id, raise_on_progress=False)
             if entry.unique_id != self.unique_id:
                 # 组合真的变化时才查重；未变的纯改名会命中条目自身
-                self._abort_if_unique_id_configured(
-                    error="unique_id_mismatch"
-                )
+                self._abort_if_unique_id_configured(error="unique_id_mismatch")
             if light_entity != entry.data.get(CONF_LIGHT_ENTITY) or (
                 lux_entity != entry.data.get(CONF_LUX_ENTITY)
             ):
@@ -169,28 +148,18 @@ class LuxBalanceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class LuxBalanceOptionsFlow(config_entries.OptionsFlow):
-    """Runtime-tunable options for one zone."""
-
-    def __init__(self, entry: config_entries.ConfigEntry) -> None:
-        self._entry = entry
+    """Runtime-tunable options for one zone, split into two pages."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
+        """闭环调节：扫描间隔 / 死区 / 最小亮度 / 自动关灯。"""
+        current = merged_options(self.config_entry.options)
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-        current = merged_options(self._entry.options)
+            self._cache = {**current, **user_input}
+            return await self.async_step_advanced()
         schema = vol.Schema(
             {
-                vol.Required(CONF_TARGET_LUX): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=10,
-                        max=500,
-                        step=5,
-                        unit_of_measurement="lx",
-                        mode=selector.NumberSelectorMode.SLIDER,
-                    )
-                ),
                 vol.Required(CONF_SCAN_INTERVAL_S): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=10, max=300, step=5, unit_of_measurement="s"
@@ -206,12 +175,33 @@ class LuxBalanceOptionsFlow(config_entries.OptionsFlow):
                         min=1, max=50, step=1, unit_of_measurement="%"
                     )
                 ),
+                vol.Required(CONF_AUTO_TURN_OFF): selector.BooleanSelector(),
+            }
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(schema, current),
+        )
+
+    async def async_step_advanced(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """校准与降级：校准步长 / 手动斜率。"""
+        if user_input is not None:
+            self._cache.update(user_input)
+            data = {
+                key: value
+                for key, value in self._cache.items()
+                if key != CONF_TARGET_LUX  # 目标照度由 number 实体唯一持有
+            }
+            return self.async_create_entry(title="", data=data)
+        schema = vol.Schema(
+            {
                 vol.Required(CONF_CAL_STEP_PCT): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=2, max=20, step=1, unit_of_measurement="%"
                     )
                 ),
-                vol.Required(CONF_AUTO_TURN_OFF): selector.BooleanSelector(),
                 vol.Required(CONF_MANUAL_SLOPE): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=0,
@@ -224,6 +214,6 @@ class LuxBalanceOptionsFlow(config_entries.OptionsFlow):
             }
         )
         return self.async_show_form(
-            step_id="init",
-            data_schema=self.add_suggested_values_to_schema(schema, current),
+            step_id="advanced",
+            data_schema=self.add_suggested_values_to_schema(schema, self._cache),
         )

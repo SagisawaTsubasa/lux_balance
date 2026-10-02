@@ -22,15 +22,17 @@ Home Assistant 自定义集成：为干湿分区的卫生间（或任何"灯 + �
 
 ## 配置
 
-设置 → 设备与服务 → 添加集成 → 搜索 **Lux Balance**。每个区域一条配置（干区、湿区各加一次）：
+设置 → 设备与服务 → 添加集成 → 搜索 **Lux Balance**。每个区域一条配置（干区、湿区各加一次），生成一台以区域命名的设备，下挂 4 个实体：
 
 | 字段 | 说明 |
 |---|---|
-| 区域名称 | 显示为设备名，如"干区" |
-| 灯 | 真实可调光灯（必须支持亮度，配置时校验） |
-| 照度传感器 | 观测该灯的 lux 传感器 |
+| 区域名称 | 只填区域名（如"卫生间"），将作为设备名 |
+| 灯 | 真实可调光灯（注册表存在即校验；离线的 BLE 灯不拦配置，亮度能力在线时才校验） |
+| 照度传感器 | 观测该灯的 lux 传感器（按 illuminance 设备类过滤） |
 
-**改绑/改名**：集成卡片 → **重新配置**，可随时修改区域名称、灯或照度传感器（保存后自动重载生效），无需删除重加；**配置** 则调整目标照度等 7 个运行参数。
+**两个维护入口**（集成卡片上的按钮）：
+- **重新配置**：改区域名、换灯或换照度传感器，保存后自动重载；改绑会清除该区校准曲线，请重新校准
+- **配置**：闭环与校准参数（调节间隔/死区/最小亮度/自动关灯/校准步长/手动斜率）；**目标照度不在其中**——直接调「目标照度」数字实体（重启自动恢复，可被自动化改）
 
 配置完成后每个区域生成 4 个实体：
 
@@ -72,6 +74,9 @@ DEBUG 级别会输出每次控制决策（触发源、实测 lux、环境估计�
 
 ## 已知边界
 
+- 虚拟灯恒可用（它是控制接口）；真实灯离线时指令会被丢弃，真实状态看虚拟灯属性的 `real_light` 与运行状态实体的 stale 标记
+## 已知边界
+
 - 照度传感器不可用时保持当前亮度，状态属性标 `lux_stale`，恢复后自动继续。
 - 真灯被墙面开关关闭时，虚拟灯镜像为关并停止调节；**被外部打开且已有校准曲线时，闭环会自动接管**（正在校准则推迟到校准结束）。
 - 校准期间虚拟灯的**开灯**命令会被忽略；**关灯**命令会被记住并在校准结束后执行。
@@ -90,6 +95,24 @@ pytest tests
 
 ## 更新日志 / Changelog
 
+### 0.2.0（集成形态重做）
+- **回归正经集成形态**：`integration_type` 从 helper 改为 device——条目回到「设备与服务」主列表按设备聚合展示，不再混入「创建辅助元素」入口  
+  Back to a proper integration: manifest type helper → device; entries now aggregate under Devices instead of the Helpers section
+- **命名去叠字**：设备名改为纯区域名（不再硬拼「恒照度」后缀），实体显示如「卫生间 恒照度灯」  
+  Naming: device name is now just the zone name — no more duplicated "恒照度" in entity friendly names
+- **添加流程引导**：首屏说明虚拟灯用法；区名说明明确「只填区域名」；照度选择器按 illuminance 设备类过滤（兑现 DESIGN §4 承诺）  
+  Add-flow guidance: virtual-light semantics up front; lux selector filtered to the illuminance device class
+- **目标照度单一真相**：从 options 表单移除，「目标照度」数字实体是唯一入口（重启自动恢复，可被自动化改）；options 拆两步（闭环调节 / 校准与降级），全部预填当前值  
+  Single source of truth for the target: removed from options (the number entity owns it); options split into two pre-filled pages
+- **虚拟灯恒可用**：不再随真灯离线而不可用（真灯状态在实体属性里），自动化不再因真灯瞬断而断  
+  The virtual light stays available when the real light drops offline (real state exposed in attributes)
+- 校准按钮重复按下直接弹错误提示（此前只写日志）  
+  Double-pressing the calibration button now raises a visible error instead of only logging
+- 壳层冒烟测试 9 项（含 0.1.6「首渲染即崩」回归钉）；引擎 26 项测试不回归  
+  9 shell smoke tests (incl. the 0.1.6 initial-render regression pin); 26 engine tests still green
+- hacs.json 最低 HA 版本随 OptionsFlow 现代写法提升至 2024.12.0  
+  hacs.json minimum HA raised to 2024.12.0 with the modernized OptionsFlow
+
 ### 0.1.5
 - 新增：**重新配置**流程——区域名称、灯、照度传感器三项随时改绑，保存后自动重载（此前必须删条目重加）；条目标题与 unique_id 同步更新  
   Added: a standard **reconfigure** flow — rename the zone or re-bind the light/lux sensor at any time, auto-reload on save; entry title and unique_id update together
@@ -97,8 +120,8 @@ pytest tests
   Same validations as on add; conflicting light+sensor pairs raise an inline form error
 - 改绑灯/传感器会清除该区域的校准曲线（曲线与旧绑定对应），**改绑后请重新校准**  
   Re-binding clears the zone's calibration curve (tied to the old binding) — **run calibration again afterwards**
-- hacs.json 最低 HA 版本修正为 2024.11.0（reconfigure 助手 API 要求）  
-  hacs.json minimum HA corrected to 2024.11.0 (required by the reconfigure helpers)
+- hacs.json 最低 HA 版本修正为 2024.12.0（reconfigure 助手与 `OptionsFlow.config_entry` 属性要求；0.1.5 时声称的 2024.11 实未落地，本次一并兑现）  
+  hacs.json minimum HA corrected to 2024.12.0 (required by the reconfigure helpers and the OptionsFlow.config_entry property; the 2024.11 claim from 0.1.5 never actually landed — fixed now)
 
 ### 0.1.4
 - 第五轮审查收尾：关灯回滚模式守卫、services 三语同步等  

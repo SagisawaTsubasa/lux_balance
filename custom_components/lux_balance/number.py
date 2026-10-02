@@ -60,22 +60,21 @@ class TargetLuxNumber(NumberEntity, RestoreEntity):
         self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:
-        # An explicitly set option wins over the restored entity value;
-        # otherwise the number entity is the source of truth across restarts.
-        if not self._runtime.target_from_options:
-            last = await self.async_get_last_state()
-            if last is not None and last.state not in (
-                STATE_UNKNOWN,
-                STATE_UNAVAILABLE,
-            ):
-                try:
-                    self._runtime.set_target(float(last.state))
-                except ValueError:
-                    _LOGGER.warning(
-                        "%s: 恢复目标照度失败（last=%s）",
-                        self._runtime.zone_name,
-                        last.state,
-                    )
+        # The number entity is the single source of truth for the target:
+        # restore the last value across restarts (options no longer override).
+        last = await self.async_get_last_state()
+        if last is not None and last.state not in (
+            STATE_UNKNOWN,
+            STATE_UNAVAILABLE,
+        ):
+            try:
+                self._runtime.set_target(float(last.state))
+            except ValueError:
+                _LOGGER.warning(
+                    "%s: 恢复目标照度失败（last=%s）",
+                    self._runtime.zone_name,
+                    last.state,
+                )
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass, self._runtime.signal, self._handle_update

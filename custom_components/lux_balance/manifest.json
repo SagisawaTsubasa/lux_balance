@@ -6,8 +6,8 @@
   ],
   "config_flow": true,
   "documentation": "https://github.com/SagisawaTsubasa/lux_balance",
-  "integration_type": "helper",
+  "integration_type": "device",
   "iot_class": "calculated",
   "requirements": [],
-  "version": "0.1.6"
+  "version": "0.2.0"
 }

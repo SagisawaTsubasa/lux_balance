@@ -1,5 +1,8 @@
 """Constants for the lux_balance integration."""
 
+from collections.abc import Mapping
+from typing import Any
+
 DOMAIN = "lux_balance"
 PLATFORMS = ["light", "number", "button", "sensor"]
 
@@ -43,3 +46,20 @@ CAL_MIN_USEFUL_LUX = 5.0  # calibrated curve below this is treated as no respons
 DECISION_RING_SIZE = 50
 
 SERVICE_CALIBRATE = "calibrate"
+
+
+def merged_options(options: Mapping[str, Any]) -> dict[str, Any]:
+    """Options merged over defaults; single source of truth for runtime."""
+    return {
+        CONF_TARGET_LUX: options.get(CONF_TARGET_LUX, DEFAULT_TARGET_LUX),
+        CONF_SCAN_INTERVAL_S: options.get(
+            CONF_SCAN_INTERVAL_S, DEFAULT_SCAN_INTERVAL_S
+        ),
+        CONF_DEADBAND_PCT: options.get(CONF_DEADBAND_PCT, DEFAULT_DEADBAND_PCT),
+        CONF_MIN_BRIGHTNESS_PCT: options.get(
+            CONF_MIN_BRIGHTNESS_PCT, DEFAULT_MIN_BRIGHTNESS_PCT
+        ),
+        CONF_CAL_STEP_PCT: options.get(CONF_CAL_STEP_PCT, DEFAULT_CAL_STEP_PCT),
+        CONF_AUTO_TURN_OFF: options.get(CONF_AUTO_TURN_OFF, DEFAULT_AUTO_TURN_OFF),
+        CONF_MANUAL_SLOPE: options.get(CONF_MANUAL_SLOPE, DEFAULT_MANUAL_SLOPE),
+    }  # 注：CONF_TARGET_LUX 只作启动初值；运行时目标以 number 实体为准

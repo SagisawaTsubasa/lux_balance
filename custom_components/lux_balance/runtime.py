@@ -36,7 +36,6 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.util import dt as dt_util
 
-from .config_flow import merged_options
 from .const import (
     CAL_CMD_SETTLE_S,
     CAL_FIRST_REPORT_TIMEOUT_S,
@@ -61,6 +60,7 @@ from .const import (
     MODE_CALIBRATING,
     MODE_IDLE,
     MODE_PASSTHROUGH,
+    merged_options,
 )
 from .logic import (
     Curve,
@@ -98,7 +98,6 @@ class ZoneRuntime:
         self.light_entity: str = entry.data[CONF_LIGHT_ENTITY]
         self.lux_entity: str = entry.data[CONF_LUX_ENTITY]
         self.opts = merged_options(entry.options)
-        self.target_from_options: bool = CONF_TARGET_LUX in entry.options
         self.curve: Curve | None = None
         self.mode: str = MODE_IDLE
         self.commanded_pct: float | None = None
@@ -128,8 +127,8 @@ class ZoneRuntime:
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self.entry_id)},
-            name=f"{self.zone_name}恒照度",
-            manufacturer="lux_balance",
+            name=self.zone_name,
+            manufacturer="Lux Balance",
             model="constant-illuminance zone",
         )
 
