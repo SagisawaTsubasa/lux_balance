@@ -30,6 +30,8 @@ Home Assistant 自定义集成：为干湿分区的卫生间（或任何"灯 + �
 | 灯 | 真实可调光灯（必须支持亮度，配置时校验） |
 | 照度传感器 | 观测该灯的 lux 传感器 |
 
+**改绑/改名**：集成卡片 → **重新配置**，可随时修改区域名称、灯或照度传感器（保存后自动重载生效），无需删除重加；**配置** 则调整目标照度等 7 个运行参数。
+
 配置完成后每个区域生成 4 个实体：
 
 | 实体 | 用途 |
@@ -87,6 +89,20 @@ pytest tests
 推送后 GitHub Actions 自动跑同一套检查。
 
 ## 更新日志 / Changelog
+
+### 0.1.5
+- 新增：**重新配置**流程——区域名称、灯、照度传感器三项随时改绑，保存后自动重载（此前必须删条目重加）；条目标题与 unique_id 同步更新  
+  Added: a standard **reconfigure** flow — rename the zone or re-bind the light/lux sensor at any time, auto-reload on save; entry title and unique_id update together
+- 校验逻辑与添加时一致（实体存在 / 排除自家虚拟灯 / 必须支持亮度）；新的灯+传感器组合与已有条目冲突时表单明确报错  
+  Same validations as on add; conflicting light+sensor pairs raise an inline form error
+- 改绑灯/传感器会清除该区域的校准曲线（曲线与旧绑定对应），**改绑后请重新校准**  
+  Re-binding clears the zone's calibration curve (tied to the old binding) — **run calibration again afterwards**
+- hacs.json 最低 HA 版本修正为 2024.11.0（reconfigure 助手 API 要求）  
+  hacs.json minimum HA corrected to 2024.11.0 (required by the reconfigure helpers)
+
+### 0.1.4
+- 第五轮审查收尾：关灯回滚模式守卫、services 三语同步等  
+  Fifth review round: off-rollback mode guards, services i18n sync, etc.
 
 ### 0.1.3
 

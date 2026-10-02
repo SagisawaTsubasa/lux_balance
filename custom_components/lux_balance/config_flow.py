@@ -8,7 +8,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 
@@ -32,6 +32,7 @@ from .const import (
     DEFAULT_TARGET_LUX,
     DOMAIN,
 )
+from .store import ZoneStorage
 
 # Color modes that imply the light can dim (anything but plain on/off).
 _BRIGHTNESS_MODES = {
@@ -79,6 +80,26 @@ def _user_schema() -> vol.Schema:
     )
 
 
+def _validate_binding(
+    hass: HomeAssistant, user_input: dict[str, Any] | None
+) -> dict[str, str]:
+    """Validate the light/lux binding shared by the user and reconfigure steps."""
+    if user_input is None:
+        return {}
+    light_entity: str = user_input[CONF_LIGHT_ENTITY]
+    state = hass.states.get(light_entity)
+    registry_entry = er.async_get(hass).async_get(light_entity)
+    if state is None:
+        return {"base": "entity_missing"}
+    if registry_entry is not None and registry_entry.platform == DOMAIN:
+        return {"base": "light_is_virtual"}
+    if not _BRIGHTNESS_MODES & set(
+        state.attributes.get("supported_color_modes") or []
+    ):
+        return {"base": "light_no_brightness"}
+    return {}
+
+
 class LuxBalanceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the per-zone config flow."""
 
@@ -95,29 +116,54 @@ class LuxBalanceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
+        errors = _validate_binding(self.hass, user_input)
+        if not errors:
             light_entity: str = user_input[CONF_LIGHT_ENTITY]
             lux_entity: str = user_input[CONF_LUX_ENTITY]
-            state = self.hass.states.get(light_entity)
-            registry_entry = er.async_get(self.hass).async_get(light_entity)
-            if state is None:
-                errors["base"] = "entity_missing"
-            elif registry_entry is not None and registry_entry.platform == DOMAIN:
-                errors["base"] = "light_is_virtual"
-            elif not _BRIGHTNESS_MODES & set(
-                state.attributes.get("supported_color_modes") or []
-            ):
-                errors["base"] = "light_no_brightness"
-            else:
-                await self.async_set_unique_id(f"{light_entity}::{lux_entity}")
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=str(user_input[CONF_ZONE_NAME]), data=user_input
-                )
+            await self.async_set_unique_id(f"{light_entity}::{lux_entity}")
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(
+                title=str(user_input[CONF_ZONE_NAME]), data=user_input
+            )
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(_user_schema(), user_input),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Re-bind the zone's light/lux sensor or rename it."""
+        entry = self._get_reconfigure_entry()
+        errors = _validate_binding(self.hass, user_input)
+        if not errors:
+            light_entity: str = user_input[CONF_LIGHT_ENTITY]
+            lux_entity: str = user_input[CONF_LUX_ENTITY]
+            new_unique_id = f"{light_entity}::{lux_entity}"
+            await self.async_set_unique_id(new_unique_id, raise_on_progress=False)
+            if entry.unique_id != self.unique_id:
+                # 组合真的变化时才查重；未变的纯改名会命中条目自身
+                self._abort_if_unique_id_configured(
+                    error="unique_id_mismatch"
+                )
+            if light_entity != entry.data.get(CONF_LIGHT_ENTITY) or (
+                lux_entity != entry.data.get(CONF_LUX_ENTITY)
+            ):
+                # 校准曲线与旧灯/传感器绑定，改绑后不再对应——清除并回落
+                # 到手动系数（改绑后需重新校准）
+                await ZoneStorage(self.hass, entry.entry_id).async_remove()
+            return self.async_update_reload_and_abort(
+                entry,
+                title=str(user_input[CONF_ZONE_NAME]),
+                unique_id=self.unique_id,
+                data=user_input,
+            )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                _user_schema(), user_input or entry.data
+            ),
             errors=errors,
         )
 

@@ -14,15 +14,32 @@
           "light_entity": "要驱动的真实可调光灯。",
           "lux_entity": "测量该灯照度的传感器（优先选照度类）。"
         }
+      },
+      "reconfigure": {
+        "title": "重新配置区域",
+        "description": "重新绑定可调光灯与照度传感器，或修改区域名称。保存后运行时自动重载。改绑会清除已标定的校准曲线——请重新校准。",
+        "data": {
+          "zone_name": "区域名称",
+          "light_entity": "灯",
+          "lux_entity": "照度传感器"
+        },
+        "data_description": {
+          "zone_name": "显示为设备名称。",
+          "light_entity": "要驱动的真实可调光灯。",
+          "lux_entity": "测量该灯照度的传感器（优先选照度类）。"
+        }
       }
     },
     "error": {
       "entity_missing": "在 Home Assistant 中找不到该实体。",
       "light_no_brightness": "这盏灯不支持亮度调节。",
-      "light_is_virtual": "这盏灯是 Lux Balance 自己生成的虚拟灯，请改选真实的灯。"
+      "light_is_virtual": "这盏灯是 Lux Balance 自己生成的虚拟灯，请改选真实的灯。",
+      "unique_id_mismatch": "新的灯 + 传感器组合已被其他条目使用。"
     },
     "abort": {
-      "already_configured": "该区域（灯 + 传感器组合）已配置过。"
+      "already_configured": "该区域（灯 + 传感器组合）已配置过。",
+      "reconfigure_successful": "配置更改已保存。",
+      "unique_id_mismatch": "新的灯 + 传感器组合已被其他条目使用。"
     }
   },
   "options": {
