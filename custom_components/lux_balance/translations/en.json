@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "Add a constant-illuminance zone",
-        "description": "Pick a dimmable light and the illuminance sensor that observes it. One entry per zone; add the dry and wet zones separately.",
+        "description": "One entry per zone. Afterwards you control the zone through the virtual light this integration creates: ON = closed-loop constant illuminance, setting a brightness = manual passthrough. The real light is driven automatically.",
         "data": {
           "zone_name": "Zone name",
           "light_entity": "Light",
           "lux_entity": "Illuminance sensor"
         },
         "data_description": {
-          "zone_name": "Shown as the device name, e.g. Dry zone.",
+          "zone_name": "Zone name only (e.g. Bathroom) — it becomes the device name.",
           "light_entity": "The real dimmable light to drive.",
           "lux_entity": "Sensor that measures the light (illuminance device class preferred)."
         }
@@ -45,23 +45,30 @@
   "options": {
     "step": {
       "init": {
-        "title": "Lux Balance options",
+        "title": "Closed-loop control",
+        "description": "Behavior while the light is on. Adjust the target on the 'target illuminance' number entity.",
         "data": {
-          "target_lux": "Target illuminance",
-          "scan_interval_s": "Adjustment interval",
-          "deadband_pct": "Deadband",
-          "min_brightness_pct": "Minimum brightness",
-          "calibrate_step_pct": "Calibration step",
-          "auto_turn_off": "Auto turn off",
-          "manual_slope": "Manual curve (lux per 1%)"
+          "scan_interval_s": "Adjustment interval (seconds)",
+          "deadband_pct": "Deadband (%)",
+          "min_brightness_pct": "Minimum brightness (%)",
+          "auto_turn_off": "Auto turn off when ambient meets target"
         },
         "data_description": {
-          "target_lux": "Desired illuminance in lux. Only acts as the initial value when explicitly set here; otherwise the number entity's last value is restored.",
           "scan_interval_s": "Closed-loop re-evaluation period while the light is on.",
           "deadband_pct": "Adjustments smaller than this are skipped to avoid flicker.",
           "min_brightness_pct": "Lower bound for computed brightness; guards the unstable low-end LED region.",
+          "auto_turn_off": "Turn the light off after two consecutive cycles with ambient at or above target."
+        }
+      },
+      "advanced": {
+        "title": "Calibration & fallback",
+        "description": "Fallback and calibration tuning.",
+        "data": {
+          "calibrate_step_pct": "Calibration step (%)",
+          "manual_slope": "Manual curve (lux per 1%)"
+        },
+        "data_description": {
           "calibrate_step_pct": "Sweep step during calibration (5 = fine, 10 = coarse; auto-upgrades to 10 after repeated timeouts).",
-          "auto_turn_off": "Turn the light off after two consecutive cycles with ambient at or above target.",
           "manual_slope": "Fallback linear curve (added lux per 1% brightness) when no calibration has been run; 0 disables."
         }
       }

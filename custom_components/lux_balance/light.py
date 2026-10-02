@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
-import logging
-
 from homeassistant.components.light import ATTR_BRIGHTNESS, ColorMode, LightEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .runtime import ZoneRuntime
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -43,11 +39,9 @@ class LuxBalanceLight(LightEntity):
 
     @property
     def available(self) -> bool:
-        state = self.hass.states.get(self._runtime.light_entity)
-        return state is not None and state.state not in (
-            STATE_UNAVAILABLE,
-            STATE_UNKNOWN,
-        )
+        # 虚拟灯是控制接口：条目在即保持可用，自动化不因真灯瞬断而断；
+        # 真灯离线反映在 real_light 属性与运行状态里（runtime 的 stale 逻辑）
+        return True
 
     @property
     def is_on(self) -> bool | None:
@@ -67,9 +61,11 @@ class LuxBalanceLight(LightEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
+        real = self.hass.states.get(self._runtime.light_entity)
         return {
             "mode": self._runtime.mode,
             "commanded_pct": self._runtime.commanded_pct,
+            "real_light": real.state if real else "missing",
         }
 
     async def async_turn_on(self, **kwargs) -> None:
