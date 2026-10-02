@@ -117,7 +117,7 @@ class LuxBalanceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         errors = _validate_binding(self.hass, user_input)
-        if not errors:
+        if user_input is not None and not errors:
             light_entity: str = user_input[CONF_LIGHT_ENTITY]
             lux_entity: str = user_input[CONF_LUX_ENTITY]
             await self.async_set_unique_id(f"{light_entity}::{lux_entity}")
@@ -137,7 +137,7 @@ class LuxBalanceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Re-bind the zone's light/lux sensor or rename it."""
         entry = self._get_reconfigure_entry()
         errors = _validate_binding(self.hass, user_input)
-        if not errors:
+        if user_input is not None and not errors:
             light_entity: str = user_input[CONF_LIGHT_ENTITY]
             lux_entity: str = user_input[CONF_LUX_ENTITY]
             new_unique_id = f"{light_entity}::{lux_entity}"
