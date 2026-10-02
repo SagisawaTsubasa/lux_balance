@@ -115,3 +115,7 @@ pytest tests
 ### 0.1.0
 
 - 首个可用版本：曲线校准（自动扫描 + 手动系数兜底）、持续闭环补偿、虚拟灯镜像、目标照度实体、校准按钮与服务、运行状态诊断。
+
+### 0.1.6
+- 修复：0.1.5 抽取校验助手时丢失了 `user_input is None`（首次渲染）守卫，导致添加/重新配置表单一打开即 500——这也是「添加集成总是失败」的直接原因之一  
+  Fixed: the 0.1.5 validation-helper refactor dropped the `user_input is None` (initial render) guard, so opening the add/reconfigure form crashed with a 500 — the direct cause of "adding always failed"
