@@ -34,7 +34,11 @@ FAILURES: list[str] = []
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
-    print(("  ok  " if cond else "FAIL  ") + name + (f": {detail}" if detail and not cond else ""))
+    print(
+        ("  ok  " if cond else "FAIL  ")
+        + name
+        + (f": {detail}" if detail and not cond else "")
+    )
     if not cond:
         FAILURES.append(f"{name}: {detail}")
 
@@ -123,7 +127,11 @@ def run_checks(browser, base: str) -> None:
         """() => [...document.getElementById('hub').shadowRoot.querySelectorAll('.fx-tab')]
                  .map(t => ({badge: t.querySelector('.fx-badge').textContent, sel: t.getAttribute('aria-selected')}))"""
     )
-    check("luxbalance tab present", len(tabs) == 1 and tabs[0]["badge"] == "luxbalance", str(tabs))
+    check(
+        "luxbalance tab present",
+        len(tabs) == 1 and tabs[0]["badge"] == "luxbalance",
+        str(tabs),
+    )
     check("tab auto-selected", tabs[0]["sel"] == "true", str(tabs))
 
     # ---- 3: curve ------------------------------------------------------------
@@ -141,7 +149,9 @@ def run_checks(browser, base: str) -> None:
           return null;
         }"""
     )
-    check("curve polyline has 6 fixture points", poly and poly["points"] == 6, str(poly))
+    check(
+        "curve polyline has 6 fixture points", poly and poly["points"] == 6, str(poly)
+    )
     check("curve hover dots present", poly and poly["dots"] == 6, str(poly))
 
     chips = page.evaluate(
@@ -154,7 +164,11 @@ def run_checks(browser, base: str) -> None:
           return '';
         }"""
     )
-    check("curve chips carry max/slope", "最大增量 186.3 lx" in chips and "斜率 2.41" in chips, chips[:120])
+    check(
+        "curve chips carry max/slope",
+        "最大增量 186.3 lx" in chips and "斜率 2.41" in chips,
+        chips[:120],
+    )
 
     # ---- 4: decision table -----------------------------------------------------
     rows = page.evaluate(
@@ -273,8 +287,11 @@ def run_checks(browser, base: str) -> None:
           return null;
         }"""
     )
-    check("other zone calibrate button disabled while calibrating",
-          dis and dis["disabled"] is True and "一次只能校准" in dis["title"], str(dis))
+    check(
+        "other zone calibrate button disabled while calibrating",
+        dis and dis["disabled"] is True and "一次只能校准" in dis["title"],
+        str(dis),
+    )
     page2.close()
 
     # ---- 7b: nocurve 空态 ------------------------------------------------------------
@@ -417,8 +434,11 @@ def run_checks(browser, base: str) -> None:
           return null;
         }"""
     )
-    check("error card replaced by regular render after recovery",
-          bool(recovered and recovered["errorGone"] and recovered["zoneBack"]), str(recovered))
+    check(
+        "error card replaced by regular render after recovery",
+        bool(recovered and recovered["errorGone"] and recovered["zoneBack"]),
+        str(recovered),
+    )
 
     # (b) curve with dirty scalars: chips hidden, axis falls back to points max
     page.evaluate("() => window.__setDirtyScalars(true)")
@@ -461,8 +481,16 @@ def run_checks(browser, base: str) -> None:
           return null;
         }"""
     )
-    check("dirty scalars: no null chips, curve still plotted",
-          bool(dirty and dirty["noNullChip"] and dirty["hasCurveChip"] and dirty["polyPoints"] == 6), str(dirty))
+    check(
+        "dirty scalars: no null chips, curve still plotted",
+        bool(
+            dirty
+            and dirty["noNullChip"]
+            and dirty["hasCurveChip"]
+            and dirty["polyPoints"] == 6
+        ),
+        str(dirty),
+    )
 
     check("no page errors so far", not errors, "; ".join(errors[:3]))
 

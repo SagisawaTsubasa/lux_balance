@@ -22,7 +22,9 @@ from pathlib import Path
 DEV_DIR = Path(__file__).resolve().parent
 REPO_ROOT = DEV_DIR.parent
 STATIC_DIR = REPO_ROOT / "custom_components" / "lux_balance" / "static"
-HUB_STATIC = REPO_ROOT.parent / "FumihaHub" / "custom_components" / "fumiha_hub" / "static"
+HUB_STATIC = (
+    REPO_ROOT.parent / "FumihaHub" / "custom_components" / "fumiha_hub" / "static"
+)
 
 DEFAULT_PORT = 8771
 
@@ -46,9 +48,9 @@ class DevHandler(SimpleHTTPRequestHandler):
         if "\x00" in path:
             return str((DEV_DIR / "__escaped__").resolve())
         if path.startswith("/fumiha_hub/"):
-            return self._safe(HUB_STATIC, path[len("/fumiha_hub/"):])
+            return self._safe(HUB_STATIC, path[len("/fumiha_hub/") :])
         if path.startswith("/lux_balance/"):
-            return self._safe(STATIC_DIR, path[len("/lux_balance/"):])
+            return self._safe(STATIC_DIR, path[len("/lux_balance/") :])
         if path in ("", "/"):
             return str(DEV_DIR / "index.html")
         return self._safe(DEV_DIR, path.lstrip("/"))

@@ -164,8 +164,9 @@ def test_overview_drops_nonfinite_curve_points():
 
 def test_overview_no_curve_and_no_last_decision():
     hass = FakeHass()
-    rt = fake_runtime("e1", "卫生间", curve=None, last_decision=None,
-                      last_adjustment=None)
+    rt = fake_runtime(
+        "e1", "卫生间", curve=None, last_decision=None, last_adjustment=None
+    )
     hass.data[web.DOMAIN] = {"e1": rt}
     reset_registry()
     resp = asyncio.run(web.OverviewView().get(FakeRequest(hass)))
@@ -224,20 +225,18 @@ def test_register_hub_mode():
     assert d["module_url"].startswith("/lux_balance/page.js?ver=")
     assert d["version"] == "0.3.0"
     # no standalone panel in hub mode
-    assert web.STANDALONE_PANEL_URL_PATH not in hass.data.get(
-        "frontend_panels", {}
-    )
-    assert ("fumiha_hub_page_changed", {"id": web.PAGE_ID, "action": "register"}) \
-        in hass.bus.fired
+    assert web.STANDALONE_PANEL_URL_PATH not in hass.data.get("frontend_panels", {})
+    assert (
+        "fumiha_hub_page_changed",
+        {"id": web.PAGE_ID, "action": "register"},
+    ) in hass.bus.fired
 
 
 def test_register_standalone_mode():
     hass = FakeHass()
     hass.data[web.DOMAIN] = {"e1": fake_runtime()}
     asyncio.run(web.async_setup_web(hass))
-    panel = hass.data.get("frontend_panels", {}).get(
-        web.STANDALONE_PANEL_URL_PATH
-    )
+    panel = hass.data.get("frontend_panels", {}).get(web.STANDALONE_PANEL_URL_PATH)
     assert panel is not None
     cfg = panel["config"]["_panel_custom"]
     assert cfg["name"] == "lux-balance-page"
@@ -263,8 +262,10 @@ def test_unload_hub_mode_pops_descriptor_and_fires():
     asyncio.run(web.async_setup_web(hass))
     web.async_unload_web(hass)
     assert web.PAGE_ID not in hass.data[web.REGISTRY_KEY]
-    assert ("fumiha_hub_page_changed", {"id": web.PAGE_ID, "action": "unregister"}) \
-        in hass.bus.fired
+    assert (
+        "fumiha_hub_page_changed",
+        {"id": web.PAGE_ID, "action": "unregister"},
+    ) in hass.bus.fired
 
 
 def test_unload_standalone_mode_removes_panel():
@@ -293,8 +294,10 @@ def test_started_recheck_switches_standalone_to_hub():
     assert web.PAGE_ID in hass.data[web.REGISTRY_KEY]
     assert flags["page_registered"] == "hub"
     assert web.STANDALONE_PANEL_URL_PATH not in hass.data["frontend_panels"]
-    assert ("fumiha_hub_page_changed", {"id": web.PAGE_ID, "action": "register"}) \
-        in hass.bus.fired
+    assert (
+        "fumiha_hub_page_changed",
+        {"id": web.PAGE_ID, "action": "register"},
+    ) in hass.bus.fired
 
 
 def test_started_recheck_noop_when_already_hub():
@@ -366,9 +369,7 @@ def test_mode_switch_standalone_to_hub_on_reregister():
     assert web.PAGE_ID in hass.data[web.REGISTRY_KEY]
     assert web.STANDALONE_PANEL_URL_PATH not in hass.data.get("frontend_panels", {})
     actions = [
-        d.get("action")
-        for t, d in hass.bus.fired
-        if t == "fumiha_hub_page_changed"
+        d.get("action") for t, d in hass.bus.fired if t == "fumiha_hub_page_changed"
     ]
     # standalone 面板注销不发 bus 事件，只有 hub 方向的 register 会发
     assert actions == ["register"]
@@ -391,6 +392,7 @@ def test_mode_switch_hub_to_standalone_when_hub_removed():
 def test_manifest_declares_web_dependencies():
     import json as _json
     from pathlib import Path as _Path
+
     mf = _Path(__file__).resolve().parents[1] / "custom_components" / "lux_balance"
     mf = mf / "manifest.json"
     m = _json.loads(mf.read_text(encoding="utf-8"))
@@ -430,8 +432,10 @@ def _zone_runtimes(monkeypatch, behaviors):
 
 def test_calibrate_no_target_starts_first_only(monkeypatch):
     import custom_components.lux_balance as pkg
-    monkeypatch.setattr(pkg, "async_extract_entity_ids",
-                        _make_extract(set()), raising=False)
+
+    monkeypatch.setattr(
+        pkg, "async_extract_entity_ids", _make_extract(set()), raising=False
+    )
     hass = FakeHass()
     _register_calibrate(hass)
     handler = hass.services.registered[("lux_balance", "calibrate")]
@@ -448,8 +452,10 @@ def test_calibrate_no_target_starts_first_only(monkeypatch):
 
 def test_calibrate_targeted_skip_raises(monkeypatch):
     import custom_components.lux_balance as pkg
-    monkeypatch.setattr(pkg, "async_extract_entity_ids",
-                        _make_extract({"light.bath"}), raising=False)
+
+    monkeypatch.setattr(
+        pkg, "async_extract_entity_ids", _make_extract({"light.bath"}), raising=False
+    )
     hass = FakeHass()
     _register_calibrate(hass)
     handler = hass.services.registered[("lux_balance", "calibrate")]
@@ -460,10 +466,12 @@ def test_calibrate_targeted_skip_raises(monkeypatch):
     hass.data[web.DOMAIN] = {"e1": r1, "e2": r2}
     reset_registry()
     called = []
-    monkeypatch.setattr(r1, "start_calibration",
-                        lambda: called.append("r1") or True, raising=False)
-    monkeypatch.setattr(r2, "start_calibration",
-                        lambda: called.append("r2") or False, raising=False)
+    monkeypatch.setattr(
+        r1, "start_calibration", lambda: called.append("r1") or True, raising=False
+    )
+    monkeypatch.setattr(
+        r2, "start_calibration", lambda: called.append("r2") or False, raising=False
+    )
     try:
         asyncio.run(handler(SimpleNamespace(data={"entity_id": ["light.bath"]})))
         raised = None
@@ -475,8 +483,10 @@ def test_calibrate_targeted_skip_raises(monkeypatch):
 
 def test_calibrate_target_miss_raises(monkeypatch):
     import custom_components.lux_balance as pkg
-    monkeypatch.setattr(pkg, "async_extract_entity_ids",
-                        _make_extract({"light.nowhere"}), raising=False)
+
+    monkeypatch.setattr(
+        pkg, "async_extract_entity_ids", _make_extract({"light.nowhere"}), raising=False
+    )
     hass = FakeHass()
     _register_calibrate(hass)
     handler = hass.services.registered[("lux_balance", "calibrate")]
@@ -495,8 +505,10 @@ def test_calibrate_target_miss_raises(monkeypatch):
 def test_calibrate_target_resolves_to_nothing_raises(monkeypatch):
     """LX-F-032: 点名但 extract 解析为空 → 必须响，不得回落全局扫描。"""
     import custom_components.lux_balance as pkg
-    monkeypatch.setattr(pkg, "async_extract_entity_ids",
-                        _make_extract(set()), raising=False)
+
+    monkeypatch.setattr(
+        pkg, "async_extract_entity_ids", _make_extract(set()), raising=False
+    )
     hass = FakeHass()
     _register_calibrate(hass)
     handler = hass.services.registered[("lux_balance", "calibrate")]
@@ -514,8 +526,10 @@ def test_calibrate_target_resolves_to_nothing_raises(monkeypatch):
 
 def test_calibrate_targeted_all_start(monkeypatch):
     import custom_components.lux_balance as pkg
-    monkeypatch.setattr(pkg, "async_extract_entity_ids",
-                        _make_extract({"light.bath"}), raising=False)
+
+    monkeypatch.setattr(
+        pkg, "async_extract_entity_ids", _make_extract({"light.bath"}), raising=False
+    )
     hass = FakeHass()
     _register_calibrate(hass)
     handler = hass.services.registered[("lux_balance", "calibrate")]

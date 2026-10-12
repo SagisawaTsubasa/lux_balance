@@ -98,9 +98,7 @@ def _zone_entities(hass: HomeAssistant, runtime: ZoneRuntime) -> set[str]:
 def _number_entity(hass: HomeAssistant, runtime: ZoneRuntime) -> str | None:
     """The zone's target-illuminance number entity, via the registry."""
     registry = er.async_get(hass)
-    for entry_entity in er.async_entries_for_config_entry(
-        registry, runtime.entry_id
-    ):
+    for entry_entity in er.async_entries_for_config_entry(registry, runtime.entry_id):
         if entry_entity.platform == "number":
             return entry_entity.entity_id
     return None

@@ -150,7 +150,8 @@ _ha_module(
     STATE_UNKNOWN="unknown",
     ATTR_ENTITY_ID="entity_id",
 )
-_ha_module("homeassistant.core",
+_ha_module(
+    "homeassistant.core",
     Event=type("Event", (), {}),
     EventStateChangedData=type("EventStateChangedData", (), {}),
     HomeAssistant=type("HomeAssistant", (), {}),
@@ -229,14 +230,12 @@ _ha_module(
 _ha_module(
     "homeassistant.components.frontend",
     DATA_PANELS="frontend_panels",
-    async_register_built_in_panel=lambda hass, **kw: (
-        hass.data.setdefault("frontend_panels", {}).__setitem__(
-            kw["frontend_url_path"], kw
-        )
-    ),
-    async_remove_panel=lambda hass, path, warn_if_unknown=True: (
-        hass.data.get("frontend_panels", {}).pop(path, None)
-    ),
+    async_register_built_in_panel=lambda hass, **kw: hass.data.setdefault(
+        "frontend_panels", {}
+    ).__setitem__(kw["frontend_url_path"], kw),
+    async_remove_panel=lambda hass, path, warn_if_unknown=True: hass.data.get(
+        "frontend_panels", {}
+    ).pop(path, None),
 )
 
 
