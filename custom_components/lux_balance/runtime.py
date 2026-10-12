@@ -60,6 +60,8 @@ from .const import (
     MODE_CALIBRATING,
     MODE_IDLE,
     MODE_PASSTHROUGH,
+    TARGET_MAX_LUX,
+    TARGET_MIN_LUX,
     merged_options,
 )
 from .logic import (
@@ -258,7 +260,9 @@ class ZoneRuntime:
     # ------------------------------------------------------------- closed loop
 
     def set_target(self, value: float) -> None:
-        self.target_lux = max(10.0, min(500.0, float(value)))
+        # Bounds come from const (single source with number.py / web.py /
+        # page validation — LX-F-022).
+        self.target_lux = max(TARGET_MIN_LUX, min(TARGET_MAX_LUX, float(value)))
         self.notify()
 
     def request_evaluate(self) -> None:

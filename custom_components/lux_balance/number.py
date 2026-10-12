@@ -16,7 +16,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, TARGET_MAX_LUX, TARGET_MIN_LUX, TARGET_STEP_LUX
 from .runtime import ZoneRuntime
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,9 +37,9 @@ class TargetLuxNumber(NumberEntity, RestoreEntity):
     _attr_should_poll = False
     _attr_has_entity_name = True
     _attr_translation_key = "target_illuminance"
-    _attr_native_min_value = 10
-    _attr_native_max_value = 500
-    _attr_native_step = 5
+    _attr_native_min_value = TARGET_MIN_LUX
+    _attr_native_max_value = TARGET_MAX_LUX
+    _attr_native_step = TARGET_STEP_LUX
     _attr_native_unit_of_measurement = LIGHT_LUX
     _attr_device_class = NumberDeviceClass.ILLUMINANCE
     _attr_mode = NumberMode.SLIDER

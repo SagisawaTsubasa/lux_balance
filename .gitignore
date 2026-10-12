@@ -4,8 +4,5 @@ __pycache__/
 .venv/
 .pytest_cache/
 
-# ---- 2026-10-09 仓库整理：测试源码移 project-tests ----
-tests/
-/pyproject.toml
-/requirements-dev.txt
-/DESIGN.md
+# ---- 2026-10-13：tests/pyproject 随 web 页面批次回归仓库（CI 跑 pytest）----
+.backup-pre-*/

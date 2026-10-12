@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<!-- =========================================================================
+  lux_balance 页面 mockup — 观感验证用，非生产件（Codex mockup 纪律）。
+  双击可开：链真 tokens.css（vendored 版），静态假数据，观感即生产观感。
+========================================================================== -->
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>亮度均衡 · mockup</title>
+<link rel="stylesheet" href="../custom_components/lux_balance/static/tokens.css">
+<style>
+  html, body { margin: 0; height: 100%; }
+  .fx-dialog { border: 1px solid var(--fx-edge); border-radius: 10px; padding: 16px 18px; background: var(--fx-panel); color: var(--fx-txt); min-width: 280px; max-width: 90vw; }
+  .fx-dialog::backdrop { background: rgba(0,0,0,.35); }
+</style>
+</head>
+<body>
+<div class="fx-body">
+  <!-- 区域卡：闭环中（已标定） -->
+  <div class="fx-card" data-zone="zone1">
+    <h2>卫生间</h2>
+    <div class="cx-status">
+      <span class="cx-chip tone-ok"><span class="fx-lamp ok"></span>闭环中</span>
+      <span class="cx-chip">环境光 ≈ 42.5 lx</span>
+    </div>
+    <div class="cx-status" style="margin-top:10px">
+      <span class="cx-metric"><span class="v">150.0 lx</span><span class="l">目标照度</span></span>
+      <input class="cx-input" type="number" min="10" max="500" step="5" value="150" aria-label="目标照度（lux）">
+      <button class="cx-btn primary">应用目标</button>
+      <button class="cx-btn" data-action="calibrate">重新校准</button>
+    </div>
+    <div style="margin-top:12px">
+      <div class="cx-status" style="margin-bottom:6px">
+        <span class="cx-chip">标定曲线</span>
+        <span class="cx-chip">最大增量 186.3 lx</span>
+        <span class="cx-chip">20–80% 斜率 2.41 lx/%</span>
+      </div>
+      <svg viewBox="0 0 560 180" role="img" aria-label="标定曲线：亮度百分比对照度增量" style="width:100%;height:auto">
+        <line x1="46" y1="154" x2="548" y2="154" stroke="var(--fx-edge)" stroke-width="1"/>
+        <line x1="46" y1="12" x2="46" y2="154" stroke="var(--fx-edge)" stroke-width="1"/>
+        <text x="46" y="172" text-anchor="start" fill="var(--fx-sub)" font-size="10">0%</text>
+        <text x="548" y="172" text-anchor="end" fill="var(--fx-sub)" font-size="10">100%</text>
+        <text x="40" y="16" text-anchor="end" fill="var(--fx-sub)" font-size="10">186.3 lx</text>
+        <text x="40" y="158" text-anchor="end" fill="var(--fx-sub)" font-size="10">0</text>
+        <polyline points="46,154 78.2,148.9 110.4,131.7 142.6,116.6 174.8,101.5 207,86.3 239.2,71.2 271.4,54 303.6,41 335.8,28 368,17.9 400.2,13 432.4,12.8 464.6,12.6 496.8,12.4 529,12.2" fill="none" stroke="var(--fx-accent)" stroke-width="2"/>
+        <circle cx="78.2" cy="148.9" r="3.5" fill="var(--fx-accent)"><title>5% → +8.2 lx</title></circle>
+        <circle cx="207" cy="86.3" r="3.5" fill="var(--fx-accent)"><title>30% → +112.4 lx</title></circle>
+        <circle cx="368" cy="17.9" r="3.5" fill="var(--fx-accent)"><title>60% → +224.1 lx</title></circle>
+        <circle cx="529" cy="12.2" r="3.5" fill="var(--fx-accent)"><title>95% → +239.8 lx</title></circle>
+      </svg>
+    </div>
+    <div style="margin-top:12px">
+      <h2>最近决策</h2>
+      <div style="max-height:220px;overflow-y:auto">
+        <table class="cx-table"><tbody>
+          <tr><td style="font-family:var(--fx-mono);white-space:pre-wrap">22:41:03 [lux] lux=42 环境=42 需求=108 → set 45%</td></tr>
+          <tr><td style="font-family:var(--fx-mono);white-space:pre-wrap">22:40:58 [tick] lux=44 环境=44 需求=106 → set 44%</td></tr>
+          <tr><td style="font-family:var(--fx-mono);white-space:pre-wrap">22:40:12 [lux] lux=38 环境=38 需求=112 → set 47%</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 区域卡：校准中（进度条 + 进度文案） -->
+  <div class="fx-card" data-zone="zone2">
+    <h2>更衣间</h2>
+    <div class="cx-status">
+      <span class="cx-chip tone-warn"><span class="fx-lamp warn breath"></span>校准中 · 上行 55%</span>
+    </div>
+    <div style="margin-top:10px">
+      <div class="cx-bar tone-warn"><div class="fill" style="width:55%"></div></div>
+      <div class="cx-note warn" style="margin-top:8px">校准进行中（15~25 分钟），期间本区闭环暂停，其他区域闭环自动让路。</div>
+    </div>
+  </div>
+
+  <!-- 区域卡：未标定（空态引导） -->
+  <div class="fx-card" data-zone="zone3">
+    <h2>书房</h2>
+    <div class="cx-status">
+      <span class="cx-chip"><span class="fx-lamp"></span>空闲</span>
+    </div>
+    <div class="cx-status" style="margin-top:10px">
+      <span class="cx-metric"><span class="v">150.0 lx</span><span class="l">目标照度</span></span>
+      <input class="cx-input" type="number" value="150" aria-label="目标照度（lux）">
+      <button class="cx-btn primary">应用目标</button>
+      <button class="cx-btn" data-action="calibrate">开始校准</button>
+    </div>
+    <div style="margin-top:12px">
+      <div class="cx-note">尚未标定：先运行一次校准，页面会出现「亮度 % → 照度增量」标定曲线。</div>
+    </div>
+    <div style="margin-top:12px">
+      <h2>最近决策</h2>
+      <div class="cx-note">暂无决策记录（闭环未运行或尚无变化）。</div>
+    </div>
+  </div>
+</div>
+<script>
+  // 灯组呼吸演示：点状态灯切换 warn 呼吸
+  document.querySelectorAll(".fx-lamp.warn").forEach(l => l.classList.add("breath"));
+</script>
+</body>
+</html>

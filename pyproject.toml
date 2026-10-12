@@ -1,0 +1,18 @@
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = [".git", ".venv", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["homeassistant"]
+
+[tool.ruff.lint.per-file-ignores]
+# dev harness 内嵌 JS 评估串，行长不受 88 限制
+"dev/*" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]  # 让 CI 的 pytest 控制台脚本能导入 custom_components 包

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<!-- =========================================================================
+  lux_balance dev harness — loads the REAL Fumiha Hub shell + REAL page
+  module over HTTP with a mockHass. Fixture switches:
+
+    ?dark=1        -> HA dark-theme variables injected
+    ?failapi=1     -> overview fetch always fails (error card path)
+    ?badmodule=1   -> page module_url points to a missing file
+    ?nocurve=1     -> all zones without a calibrated curve
+    ?calibrating=1 -> all zones mid-calibration (fast-poll path)
+    ?standalone=1  -> skip the shell; instantiate <lux-balance-page>
+                      directly (fallback mode: local kit/tokens boot path)
+========================================================================== -->
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lux_balance dev harness</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  fumiha-hub-panel { display: block; height: 100%; }
+  body.standalone lux-balance-page { display: block; min-height: 100%; }
+  .fx-dialog { border: 1px solid var(--fx-edge); border-radius: 10px; padding: 16px 18px; background: var(--fx-panel); color: var(--fx-txt); min-width: 280px; max-width: 90vw; }
+  .fx-dialog::backdrop { background: rgba(0,0,0,.35); }
+</style>
+</head>
+<body>
+<fumiha-hub-panel id="hub"></fumiha-hub-panel>
+
+<script type="module" src="/fumiha_hub/fumiha-hub.js"></script>
+
+<script>
+  var params = new URLSearchParams(location.search);
+
+  var darkVars = {
+    "primary-background-color": "#111111",
+    "card-background-color": "#1c1c1c",
+    "secondary-background-color": "#282828",
+    "divider-color": "#333333",
+    "primary-text-color": "#e1e1e1",
+    "secondary-text-color": "#9b9b9b",
+    "primary-color": "#03a9f4",
+    "success-color": "#43a047",
+    "warning-color": "#ffb300",
+    "error-color": "#ff5252",
+  };
+  if (params.has("dark")) {
+    Object.keys(darkVars).forEach(function (k) {
+      document.documentElement.style.setProperty("--" + k, darkVars[k]);
+    });
+  }
+
+  /* ---- fixtures -------------------------------------------------------- */
+  var pageModule = params.has("badmodule")
+    ? "/lux_balance/missing-page.js?ver=0.3.0"
+    : "/lux_balance/page.js?ver=0.3.0";
+
+  function curve(source, opts) {
+    opts = opts || {};
+    return {
+      source: source,
+      // max_lux:null exercises the page-side fallback (recompute from
+      // points, hide the chip) — LX-F-026 page half.
+      max_lux: opts.dirtyScalars ? null : 186.3,
+      slope_20_80: opts.dirtyScalars ? null : 2.41,
+      points: [[0, 0], [10, 18.2], [30, 112.4], [55, 176.9], [80, 185.1], [100, 186.3]],
+    };
+  }
+  window.__dirtyScalars = false;
+  window.__setDirtyScalars = function (v) { window.__dirtyScalars = v; };
+
+  function zones() {
+    var calibrated = {
+      entry_id: "e1",
+      zone_name: "卫生间",
+      mode: "active",
+      cal_progress: "",
+      target_lux: 150.0,
+      commanded_pct: 45.0,
+      lux_stale: false,
+      curve: params.has("nocurve") ? null : curve("calibrated", { dirtyScalars: window.__dirtyScalars }),
+      decisions: [
+        "22:41:03 [lux] lux=42 环境=42 需求=108 → set 45%",
+        "22:40:58 [tick] lux=44 环境=44 需求=106 → set 44%",
+        "22:40:12 [lux] lux=38 环境=38 需求=112 → set 47%",
+      ],
+      ambient_lux_est: 42.5,
+      needed_lux: 107.5,
+      last_adjustment: "2026-10-13T12:00:00+08:00",
+      light_entity: "light.bath",
+      lux_entity: "sensor.bath_lux",
+      number_entity: "number.bath_target",
+      calibrate_entity_ids: ["light.bath", "number.bath_target", "sensor.bath_lux"],
+    };
+    var second = {
+      entry_id: "e2",
+      zone_name: "更衣间",
+      mode: params.has("calibrating") ? "calibrating" : "idle",
+      cal_progress: params.has("calibrating") ? "上行 55%" : "",
+      target_lux: 120.0,
+      commanded_pct: params.has("calibrating") ? 55.0 : null,
+      lux_stale: false,
+      curve: null,
+      decisions: [],
+      ambient_lux_est: null,
+      needed_lux: null,
+      last_adjustment: null,
+      light_entity: "light.dress",
+      lux_entity: "sensor.dress_lux",
+      number_entity: "number.dress_target",
+      calibrate_entity_ids: ["light.dress", "number.dress_target", "sensor.dress_lux"],
+    };
+    return params.has("nocurve") ? [calibrated] : [calibrated, second];
+  }
+
+  var failApi = params.has("failapi");
+  // LX-F-030: runtime switch so tests can flip failure -> recovery (the
+  // _renderError recovery path needs a poll that succeeds AFTER an error).
+  window.__setFailApi = function (v) { failApi = v; };
+  var calls = [];
+  window.__serviceCalls = calls;
+
+  var mockHass = {
+    language: "zh-Hans",
+    themes: { darkMode: params.has("dark") },
+    callService: async function (domain, service, data) {
+      calls.push({ domain: domain, service: service, data: data });
+      console.info("[mockHass] callService", domain, service, JSON.stringify(data));
+    },
+    fetchWithAuth: async function (path, options) {
+      if (failApi && path.indexOf("/api/lux_balance/overview") === 0) {
+        return new Response(JSON.stringify({ error: "simulated failure" }), { status: 500 });
+      }
+      if (path.indexOf("/api/fumiha_hub/panels") === 0) {
+        return new Response(JSON.stringify({
+          dir_rev: 3,
+          panels: [{
+            id: "luxbalance.main",
+            title: "亮度均衡",
+            icon: "mdi:tune-vertical",
+            order: 10,
+            version: "0.3.0",
+            module_url: pageModule,
+            element: "lux-balance-page",
+          }],
+        }), { status: 200 });
+      }
+      if (path.indexOf("/api/lux_balance/overview") === 0) {
+        return new Response(JSON.stringify({ zones: zones() }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "no route: " + path }), { status: 404 });
+    },
+  };
+  window.__mockHass = mockHass;
+
+  var panel = document.getElementById("hub");
+
+  if (params.has("standalone")) {
+    // Fallback mode: no shell at all — mount the page element directly.
+    panel.remove();
+    document.body.classList.add("standalone");
+    var page = document.createElement("lux-balance-page");
+    page.id = "page";
+    document.body.appendChild(page);
+    import("/lux_balance/page.js?ver=0.3.0").then(function () {
+      page.hass = mockHass;
+    });
+  } else {
+    customElements.whenDefined("fumiha-hub-panel").then(function () {
+      panel.hass = mockHass;
+    });
+  }
+</script>
+</body>
+</html>

@@ -77,7 +77,7 @@
   "services": {
     "calibrate": {
       "name": "Start calibration",
-      "description": "Run the automatic curve calibration sweep: the light steps 0-100-0%, about 15-25 minutes; keep the room unoccupied. Only one zone per bathroom can calibrate at a time - without a target only the first calibratable zone starts; target the other zone separately once it finishes."
+      "description": "Run the automatic curve calibration sweep: the light steps 0→100% and back, about 15-25 minutes total — stay out of the bathroom while it runs. Only one zone per bathroom can calibrate at a time: without a target the first calibratable zone starts (others are skipped and logged); with a target the call raises when it matches no zone or is blocked by the calibration mutex."
     }
   },
   "entity": {

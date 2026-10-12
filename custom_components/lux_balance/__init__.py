@@ -11,12 +11,14 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_extract_entity_ids
 
 from .const import DOMAIN, PLATFORMS, SERVICE_CALIBRATE
 from .runtime import ZoneRuntime
 from .store import ZoneStorage
+from .web import async_setup_web, async_unload_web
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -34,6 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     runtime.start()
     _register_services(hass)
+    await async_setup_web(hass)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
@@ -51,6 +54,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await runtime.async_stop()
     if not data and hass.services.has_service(DOMAIN, SERVICE_CALIBRATE):
         hass.services.async_remove(DOMAIN, SERVICE_CALIBRATE)
+    async_unload_web(hass)
     return unload_ok
 
 
@@ -100,20 +104,43 @@ def _register_services(hass: HomeAssistant) -> None:
             if not entity_ids:
                 # A target that resolves to nothing must NOT fall through to
                 # "calibrate everything" — that would sweep the whole bathroom
-                # for 15~25 minutes unrequested.
-                _LOGGER.warning("lux_balance.calibrate: 目标未解析出任何实体，放弃执行")
-                return
+                # for 15~25 minutes unrequested. Loud, not silent: same
+                # "named but nothing started" criterion as below (LX-F-028).
+                raise HomeAssistantError("目标未解析出任何实体，放弃执行")
         addressed = 0
+        skipped: list[str] = []
+        started: list[str] = []
         for runtime in list((hass.data.get(DOMAIN) or {}).values()):
             if entity_ids and not entity_ids & _zone_entities(hass, runtime):
                 continue
             addressed += 1
             if runtime.start_calibration():
+                started.append(runtime.zone_name)
                 _LOGGER.info("%s: 校准已启动", runtime.zone_name)
             else:
-                _LOGGER.info("%s: 校准已在进行中，忽略重复请求", runtime.zone_name)
+                skipped.append(runtime.zone_name)
         if has_target and addressed == 0:
-            _LOGGER.warning("lux_balance.calibrate: 目标未命中任何区域")
+            # 命中零区域必须响：页面 5s 陈旧窗口内条目被卸载后再点校准，
+            # 不抛错就会再次出现「校准已启动 ✓」的谎报（LX-F-025）。
+            raise HomeAssistantError("目标未命中任何恒照度区域")
+        if skipped and has_target:
+            # 对齐 button 实体路径（0.2.0 起）：点名但没起来必须响。无目标的
+            # 全局调用保留 0.2.0 契约（启动第一个可校准区即成功，其余记日志）
+            # ——「启动一区 + 整体报错」的假失败比静默更误导（LX-F-021）。
+            for zone in skipped:
+                _LOGGER.warning("%s: 校准已在进行中，跳过", zone)
+            raise HomeAssistantError(
+                "校准未启动："
+                + "、".join(skipped)
+                + "（本区或另一区域已有校准进行中，同一卫生间一次只能校准一个区）"
+            )
+        if skipped:
+            for zone in skipped:
+                _LOGGER.warning(
+                    "%s: 校准已在进行中，跳过（已启动：%s）",
+                    zone,
+                    "、".join(started) or "无",
+                )
 
     hass.services.async_register(
         DOMAIN,

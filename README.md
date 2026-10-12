@@ -75,25 +75,34 @@ DEBUG 级别会输出每次控制决策（触发源、实测 lux、环境估计�
 ## 已知边界
 
 - 虚拟灯恒可用（它是控制接口）；真实灯离线时指令会被丢弃，真实状态看虚拟灯属性的 `real_light` 与运行状态实体的 stale 标记
-## 已知边界
 
 - 照度传感器不可用时保持当前亮度，状态属性标 `lux_stale`，恢复后自动继续。
 - 真灯被墙面开关关闭时，虚拟灯镜像为关并停止调节；**被外部打开且已有校准曲线时，闭环会自动接管**（正在校准则推迟到校准结束）。
 - 校准期间虚拟灯的**开灯**命令会被忽略；**关灯**命令会被记住并在校准结束后执行。
 - 同一卫生间一次只能校准一个区域：校准期间其他区域的闭环自动暂停，结束后自动恢复。
-- `lux_balance.calibrate` 服务不带目标时只启动第一个可校准区域；要校准另一区请单独指定目标。
+- `lux_balance.calibrate` 服务：不带目标时启动第一个可校准区域（其余因互斥跳过，仅记日志）；**带目标**时目标未命中任何区域、或命中区域因校准互斥未能启动，服务会抛错（对齐校准按钮实体的行为，自动化可凭错误感知）。
 
 ## 开发
 
 ```bash
 pip install -r requirements-dev.txt
-ruff check custom_components tests && ruff format --check custom_components tests
+ruff check custom_components tests dev
 pytest tests
 ```
 
-推送后 GitHub Actions 自动跑同一套检查。
+推送后 GitHub Actions 跑 ruff（custom_components/tests/dev）与 pytest（桩模式测试，无需真 HA）。
 
 ## 更新日志 / Changelog
+
+### 0.3.0（文羽面板页面）
+- 新增：**亮度均衡页面**——可视化控制台，卡片做不了的深度交互首次落地：区域状态（闭环/校准中·实时进度/手动直通/传感器失联）、目标照度调节（即改即生效）、**标定曲线**（亮度 % → 照度增量 SVG 折线，悬停读数，未标定空态引导）、最近 50 条决策日志  
+  Added: the **Lux Balance page** — a visual console: zone status (closed-loop / live calibration progress / passthrough / sensor-stale), target illuminance editing, the **calibration curve** (SVG with hover readouts, guided empty state), and the last 50 loop decisions
+- 页面有两种呈现：安装了 [Fumiha Hub 文羽面板](https://github.com/SagisawaTsubasa/FumihaHub) 时自动汇入其侧边栏壳（provider 徽标 `luxbalance`）；未安装壳时自动注册为独立侧边栏面板「亮度均衡」——零配置，两条路功能一致  
+  The page renders inside the Fumiha Hub shell when that integration is present (provider badge `luxbalance`), or registers a standalone "亮度均衡" sidebar panel otherwise — zero config, identical features
+- 校准仍走原有服务与互斥逻辑，页面只是入口；无"取消校准"按钮（集成本身无此 API，校准完成或失败后自动恢复）  
+  Calibration uses the existing service and mutual exclusion; the page is only an entry point. No cancel button (the integration has no such API — the sweep finishes or fails on its own)
+- `static/kit.js`、`static/tokens.css` 为 FumihaHub 同名文件的 vendored 副本（锁步更新；升级 FumihaHub 后建议同时升级本集成）  
+  `static/kit.js` / `static/tokens.css` are vendored copies of FumihaHub's files (keep in lockstep; when upgrading FumihaHub, upgrade this integration too)
 
 ### 0.2.0（集成形态重做）
 - **回归正经集成形态**：`integration_type` 从 helper 改为 device——条目回到「设备与服务」主列表按设备聚合展示，不再混入「创建辅助元素」入口  
@@ -112,6 +121,10 @@ pytest tests
   9 shell smoke tests (incl. the 0.1.6 initial-render regression pin); 26 engine tests still green
 - hacs.json 最低 HA 版本随 OptionsFlow 现代写法提升至 2024.12.0  
   hacs.json minimum HA raised to 2024.12.0 with the modernized OptionsFlow
+
+### 0.1.6
+- 修复：0.1.5 抽取校验助手时丢失了 `user_input is None`（首次渲染）守卫，导致添加/重新配置表单一打开即 500——这也是「添加集成总是失败」的直接原因之一  
+  Fixed: the 0.1.5 validation-helper refactor dropped the `user_input is None` (initial render) guard, so opening the add/reconfigure form crashed with a 500 — the direct cause of "adding always failed"
 
 ### 0.1.5
 - 新增：**重新配置**流程——区域名称、灯、照度传感器三项随时改绑，保存后自动重载（此前必须删条目重加）；条目标题与 unique_id 同步更新  
@@ -139,6 +152,3 @@ pytest tests
 
 - 首个可用版本：曲线校准（自动扫描 + 手动系数兜底）、持续闭环补偿、虚拟灯镜像、目标照度实体、校准按钮与服务、运行状态诊断。
 
-### 0.1.6
-- 修复：0.1.5 抽取校验助手时丢失了 `user_input is None`（首次渲染）守卫，导致添加/重新配置表单一打开即 500——这也是「添加集成总是失败」的直接原因之一  
-  Fixed: the 0.1.5 validation-helper refactor dropped the `user_input is None` (initial render) guard, so opening the add/reconfigure form crashed with a 500 — the direct cause of "adding always failed"

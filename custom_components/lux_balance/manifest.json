@@ -9,5 +9,12 @@
   "integration_type": "device",
   "iot_class": "calculated",
   "requirements": [],
-  "version": "0.2.0"
+  "version": "0.3.0",
+  "dependencies": [
+    "http",
+    "frontend"
+  ],
+  "after_dependencies": [
+    "fumiha_hub"
+  ]
 }

@@ -21,6 +21,11 @@ CONF_AUTO_TURN_OFF = "auto_turn_off"
 CONF_MANUAL_SLOPE = "manual_slope"
 
 DEFAULT_TARGET_LUX = 150.0
+# 单一来源：number 实体（number.py）、web 页面（web.py 序列化 target_*）都以
+# 这三个常量为界（页面输入校验消费 payload，不再各自硬编码）。
+TARGET_MIN_LUX = 10.0
+TARGET_MAX_LUX = 500.0
+TARGET_STEP_LUX = 5.0
 DEFAULT_SCAN_INTERVAL_S = 45
 DEFAULT_DEADBAND_PCT = 5.0
 DEFAULT_MIN_BRIGHTNESS_PCT = 5.0
