@@ -1,3 +1,5 @@
+> ⚠ **本集成已退役（2026-10-14）**：功能已合并进 [FumihaLighting 文羽照明](https://github.com/SagisawaTsubasa/FumihaLighting)（恒照度区域条目），本仓归档停止维护。迁移方式见 FumihaLighting README「从旧集成迁移」。
+
 # Lux Balance 恒照度照明
 
 Home Assistant 自定义集成：为干湿分区的卫生间（或任何"灯 + 照度传感器"成对的空间）提供**恒照度补偿**。白天环境光变化时，自动把灯调到"目标照度 − 环境照度"所需的亮度，告别"自动开灯嫌太亮、不开灯又嫌暗"的尴尬区间。
